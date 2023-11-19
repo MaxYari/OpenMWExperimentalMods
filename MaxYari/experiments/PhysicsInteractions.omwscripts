@@ -1,0 +1,2 @@
+ARMOR, WEAPON, INGREDIENT, POTION, MISC_ITEM: scripts\MaxYari\experiments\DynamicObject.lua
+PLAYER: scripts\MaxYari\experiments\PlayerInteractions.lua

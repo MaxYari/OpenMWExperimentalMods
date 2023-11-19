@@ -12,5 +12,5 @@ Have fun!
 
 ## Credit
 
-Sound effects by a dear friend [@ni](https://nimsound.ru/)https://nimsound.ru/
+Sound effects by a dear friend (https://nimsound.ru/)https://nimsound.ru/
 

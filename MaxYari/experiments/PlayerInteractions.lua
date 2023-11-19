@@ -71,7 +71,7 @@ local function HoldingActiveObject(dt)
    if input.isMouseButtonPressed(1) then
 
       local strength = types.Actor.stats.attributes.strength(self.object);
-      throwImpulse = util.clamp(util.remap(strength.modified, 40, 100, 750, 1500), 750, 1500);
+      throwImpulse = util.clamp(util.remap(strength.modified, 40, 100, 500, 1500), 750, 1500);
       print("Calculated throwImpulse " .. throwImpulse);
 
 

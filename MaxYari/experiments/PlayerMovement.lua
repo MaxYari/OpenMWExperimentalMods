@@ -1,36 +1,54 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math
+
 local input = require('openmw.input')
 
 local self = require('openmw.self')
 local util = require('openmw.util')
 local core = require('openmw.core')
+local types = require('openmw.types')
+local camera = require('openmw.camera')
+
+local isFlying = false;
+local airJumpStrength = 500;
+local airJumpVelocity = util.vector3(0, 0, 0);
 
 
-local function MoveActorAround(dt)
+local function TestActorMovement(dt)
    local now = core.getRealTime()
-   local velocity = util.vector3(150, 150, 150) * math.sin(now)
+
    local params = {}
    params.maxWalkableSlope = 90;
    params.stepSizeDown = 200;
    params.stepSizeUp = 200;
+   self:setActorCollisionParams(params)
 
-   self:setCollisionParams(params)
 
+
+
+
+   if airJumpVelocity:length() > 0 and not types.Actor.isOnGround(self.object) then
+      self:setActorWorldVelocity(airJumpVelocity)
+   else
+      airJumpVelocity = util.vector3(0, 0, 0)
+   end
+end
+
+local function AirJump()
+   print('Got jump input')
+   if not types.Actor.isOnGround(self.object) then
+      print('Air jumping')
+      local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
+      airJumpVelocity = direction * airJumpStrength;
+   end
 end
 
 return {
    engineHandlers = {
       onUpdate = function(dt)
-         MoveActorAround(dt)
+         TestActorMovement(dt)
       end,
-      onKeyPress = function(key)
-         if key.symbol == 'x' then
-
-         end
-      end,
-      onKeyRelease = function(key)
-         if key.symbol == 'x' then
-
+      onInputAction = function(action)
+         if action == input.ACTION.Jump then
+            AirJump()
          end
       end,
    },

@@ -21,3 +21,7 @@ Sound effects by a dear friend https://nimsound.ru/
 A mod for testing an experimental OpenMW physics branch. 
 Grab and drag objects around by holding X in a similar (but not as granular) fashion to Oblivion/Skyrim. Press LMB while holding an object to throw it. Thrown items can damage NPCs. The damage and the throw strength are dependent on your strength stat.
 
+### PlayerMovement
+
+A mod for testing new actor movement bindings. Press jump in the air to air-dash.
+

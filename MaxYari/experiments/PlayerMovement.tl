@@ -7,7 +7,7 @@ local core = require('openmw.core')
 local types = require('openmw.types')
 local camera = require('openmw.camera')
 
-local isFlying = false;
+local resetingInertia = false;
 local airJumpStrength = 500;
 local airJumpVelocity = util.vector3(0,0,0);
 
@@ -30,12 +30,22 @@ local function TestActorMovement(dt: number)
     else
         airJumpVelocity = util.vector3(0,0,0)
     end
+
+    if resetingInertia then
+        self:setActorFlying(false)
+    end
 end
 
 local function AirJump()
-    print('Got jump input')
     if not types.Actor.isOnGround(self.object) then
         print('Air jumping')
+
+        -- Set actor flying for a single frame to purge an accumulated inertia (gravity, jump inertia)
+        -- This doesnt alway work though, not exactly sure why, perhaps due to differences of main thread frame and physics frame timings!
+        resetingInertia = true
+        self:setActorFlying(true)
+
+        -- Set the air velocity to be applied continuously in the frame callback
         local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
         airJumpVelocity = direction*airJumpStrength;
     end

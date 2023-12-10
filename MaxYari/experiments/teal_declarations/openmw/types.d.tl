@@ -90,13 +90,11 @@ global record Actor
     Damage actor.
   ]]
   hit: function(
-    target: openmw_core.GameObject, 
-    damage: number,
-    ishealth: boolean, 
+    target: openmw_core.GameObject,
     weapon: openmw_core.GameObject,
     attacker: openmw_core.GameObject,
-    hitPosition: openmw_util.Vector3,
-    successful: boolean
+    dmgData: DamageData,
+    hitConfig: HitConfig
   )
   
   --[[
@@ -261,6 +259,24 @@ global record Actor
   stats: types.ActorStats
   
 end
+
+global record DamageData
+  damage: number
+  affectsHealth: boolean
+  affectsFatigue: boolean
+  isSuccessful: boolean
+  hitPosition: openmw_util.Vector3
+  forceMagical: boolean
+end
+
+global record HitConfig
+  avoidHitReaction: boolean
+  avoidKnockdown: boolean
+  playVFX: boolean
+  playSFX: boolean
+  id: string
+end
+
 global record Apparatus
   --[[
     @{#ApparatusTYPE}

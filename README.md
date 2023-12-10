@@ -27,6 +27,6 @@ A mod for testing new actor movement lua bindings. Press jump in the air to air-
 
 ### GothicCombat
 
-A mod for testing new actor hit lua bindings. Every woosh hit now does a tiny amount of damage instead of completely missing the target. Copy Data Files from this repo into you game directory.
+A mod for testing new actor hit lua bindings. Every woosh hit now does a tiny amount of damage instead of completely missing the target. Copy Data Files from this repo into you game directory. Blood VFX courtesy of Shadow_Mimicry.
 
 

@@ -4,8 +4,8 @@
 Experimental mods for OpenMW, quite often made to test the latest OpenMW developmental features.
 
 ## How to install
-- Copy the "MaxYari" folder into your ".../Morrowind/Data Files/scripts/" folder. If "scripts" folder doesnt exist - create one.
-- Register the "MaxYari/Experiments" folder in your data directories. The most user-friendly way to do that is via OpenMW launcher "Data Directories" tab. Use "Append" button there.
+- Copy the "Data Files" folder into your ".../Morrowind" folder.
+- Register the "Data Files/scripts/MaxYari/Experiments" folder in your data directories. The most user-friendly way to do that is via OpenMW launcher "Data Directories" tab. Use "Append" button there.
 - After that enable the .omwscript file in "Content Files" tab of the launcher. Since this is a collection of mods - there will be multiple .omwscript files, I'm assuming you already know which mod you want to try/test. Enabling all of them at the same time might break something... or not.
 
 Have fun!
@@ -23,5 +23,10 @@ Grab and drag objects around by holding X in a similar (but not as granular) fas
 
 ### PlayerMovement
 
-A mod for testing new actor movement bindings. Press jump in the air to air-dash.
+A mod for testing new actor movement lua bindings. Press jump in the air to air-dash.
+
+### GothicCombat
+
+A mod for testing new actor hit lua bindings. Every woosh hit now does a tiny amount of damage instead of completely missing the target. Copy Data Files from this repo into you game directory.
+
 

@@ -4,26 +4,18 @@ local types = require('openmw.types')
 local AI = require('openmw.interfaces').AI
 local vfs = require('openmw.vfs')
 local view = require('openmw_aux.util').deepToString
+local util = require('openmw.util')
 
 local BehaviourTree = require('behaviourtree/behaviour_tree')
 local json = require("json")
 
-local function readJSON(path)
-   local myTable = {}
-   local file = vfs.open("scripts\\MaxYari\\experiments\\MovementTree.json")
 
-   if file then
-      -- read all contents of file into a string
-      local contents = file:read("*a")
-      myTable = json.decode(contents)
-      file:close()
-      return myTable
-   end
-end
-
+-- For testing
 if self.object.recordId ~= "dralcea arethi" then return end
 
-local actionRegistry = {}
+
+-- Behaviour state of this actor --
+-----------------------------------
 local state = {
    clear = function(self)
       self.attack = 0
@@ -35,6 +27,20 @@ local state = {
    end
 }
 
+
+-- Registering behaviours -------------
+---------------------------------------
+
+-- Containes all the behaviours, used during JSON behaviourtree parsing
+local actionRegistry = {}
+-- Adding built-in tree types into registry
+actionRegistry['select'] = BehaviourTree.Priority
+actionRegistry['sequence'] = BehaviourTree.Sequence
+actionRegistry['ContinuousCondition'] = BehaviourTree.ContinuousCondition
+
+
+-- Custom behaviours ------------------
+---------------------------------------
 function MoveAction(params)
    if not direction then direction = 1 end
    if not params then params = {} end
@@ -112,12 +118,22 @@ end
 
 actionRegistry['Wait'] = Wait
 
--- Adding basic tree types into registry
-actionRegistry['select'] = BehaviourTree.Priority
-actionRegistry['sequence'] = BehaviourTree.Sequence
-actionRegistry['ContinuousCondition'] = BehaviourTree.ContinuousCondition
 
--- Parsin JSON behaviourtree
+-- Parsin JSON behaviourtree -----
+----------------------------------
+local function readJSON(path)
+   local myTable = {}
+   local file = vfs.open("scripts\\MaxYari\\experiments\\MovementTree.json")
+
+   if file then
+      -- read all contents of file into a string
+      local contents = file:read("*a")
+      myTable = json.decode(contents)
+      file:close()
+      return myTable
+   end
+end
+
 local treeData = readJSON("MovementTree.json")
 
 local function parseNode(node)
@@ -140,8 +156,9 @@ local function parseNode(node)
    if node.name == "ContinuousCondition" then
       -- parse the condition function
       local parsedConditionFn;
+
       for field, comparator in pairs(node.properties) do
-         parsedConditionFn = assert(load(field .. comparator))
+         parsedConditionFn = util.loadCode("return " .. field .. comparator, state)
       end
 
       initData.conditionFn = function(task, state)
@@ -166,40 +183,12 @@ local function parseTreeData(td)
 end
 
 local btree = parseTreeData(treeData)
-
---[[ local btree = BehaviourTree:new({
-   tree = BehaviourTree.Priority:new({
-      nodes = {
-         BehaviourTree.ContinuousCondition:new({
-            conditionFn = function(task, state)
-               return state.targetDistance > 250
-            end,
-
-            node = BehaviourTree.Sequence:new({
-               nodes = {
-                  Wait({ min = 0, max = 1 }),
-                  Approach()
-               }
-            })
-         }),
-         BehaviourTree.ContinuousCondition:new({
-            conditionFn = function(task, state)
-               return state.targetDistance < 150
-            end,
-
-            node = BehaviourTree.Sequence:new({
-               nodes = {
-                  Wait({ min = 0, max = 1 }),
-                  Fallback()
-               }
-            })
-         }),
-      }
-   })
-}) ]]
-
 btree:setObject(state)
 
+
+
+-- Main update function (finally) --
+------------------------------------
 local function onUpdate(dt)
    -- Reset everything
    state:clear()
@@ -217,6 +206,10 @@ local function onUpdate(dt)
    self.controls.use = state.attack
 end
 
+
+
+-- Engine handlers -----------
+------------------------------
 return {
    engineHandlers = {
       onUpdate = onUpdate,

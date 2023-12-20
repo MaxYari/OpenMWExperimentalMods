@@ -15,41 +15,44 @@ local function onIHit(
    attacker,
    dmgData,
    hitConfig)
-   print("I struck a " .. target.recordId .. " it was a " .. tostring(dmgData.isSuccessful))
-   print("Damage ", dmgData.damage)
-   print("Hit positions ", dmgData.hitPosition)
-   print("Hit id ", hitConfig.id)
+
+
+
+
 
 
    if not dmgData.isSuccessful then
       local newDmgData = {}
+
       newDmgData.damage = math.max(dmgData.damage * grazedHitDamageMult, 1);
       newDmgData.affectsHealth = dmgData.affectsHealth;
       newDmgData.affectsFatigue = dmgData.affectsFatigue;
       newDmgData.hitPosition = dmgData.hitPosition;
+
       newDmgData.isSuccessful = true;
 
       local newHitConfig = {}
-      newHitConfig.playVFX = false;
-      newHitConfig.playSFX = false;
-      newHitConfig.avoidHitReaction = true;
+      newHitConfig.playVFX = true;
+      newHitConfig.playSFX = true;
+
+      newHitConfig.avoidHitReaction = math.random() > 0.33;
+
       newHitConfig.avoidKnockdown = true;
       newHitConfig.id = "GCombat_grazed_hit"
 
-      types.Actor.hit(target, weapon, attacker, newDmgData, newHitConfig)
 
       local position = camera.getPosition()
       local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
       local castResult = nearby.castRay(position, position + direction * 200)
       local object = castResult.hitObject
-      if object then
-         print("raycast hit " .. object.recordId)
-      end
-
       if object and object == target then
-         print("raycast hit target")
+
          newDmgData.hitPosition = castResult.hitPos
       end
+
+
+      types.Actor.hit(target, weapon, attacker, newDmgData, newHitConfig)
+
 
       core.sendGlobalEvent('GCombat_grazed_hit', { damageData = newDmgData, target = target })
 
@@ -68,8 +71,8 @@ return {
          dmgData,
          hitConfig)
 
-         print("onActorHit attacker " .. attacker.recordId)
-         print("weapon " .. weapon.recordId)
+
+
          if attacker == self.object then
             onIHit(target, weapon, attacker, dmgData, hitConfig)
          end

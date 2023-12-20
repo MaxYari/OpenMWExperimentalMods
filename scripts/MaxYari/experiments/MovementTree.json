@@ -1,0 +1,188 @@
+{
+    "version": "0.3.0",
+    "scope": "tree",
+    "id": "cf5e1716-942e-412d-a666-7ab6b58fa5ff",
+    "title": "Root",
+    "description": "The root of this tree.  The title of this node sets the title of the tree.  You must have one tree called \"Root\".  You can set tree-wide properties on this node and reference them in other places with the following template syntax: `{{key_name}}`.",
+    "root": "a171b020-6ab2-49a3-a04c-5e0c03d240df",
+    "properties": {},
+    "nodes": {
+        "cedeef63-ddb4-442b-9fab-b5277805dbec": {
+            "id": "cedeef63-ddb4-442b-9fab-b5277805dbec",
+            "name": "Approach",
+            "title": "Approach",
+            "description": "",
+            "properties": {},
+            "display": {
+                "x": -132,
+                "y": 84
+            }
+        },
+        "9a6a86a3-99b2-4f76-90e3-754c0144fbd0": {
+            "id": "9a6a86a3-99b2-4f76-90e3-754c0144fbd0",
+            "name": "Fallback",
+            "title": "Fallback",
+            "description": "",
+            "properties": {},
+            "display": {
+                "x": 276,
+                "y": 84
+            }
+        },
+        "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6": {
+            "id": "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6",
+            "name": "Wait",
+            "title": "Wait <min>...<max>",
+            "description": "",
+            "properties": {
+                "min": 0,
+                "max": 1
+            },
+            "display": {
+                "x": -360,
+                "y": 84
+            }
+        },
+        "a171b020-6ab2-49a3-a04c-5e0c03d240df": {
+            "id": "a171b020-6ab2-49a3-a04c-5e0c03d240df",
+            "name": "select",
+            "title": "Select",
+            "description": "Takes multiple children and runs them from top to bottom (or left to right), succeeding when any one succeeds.  Fails if all fail.",
+            "properties": {},
+            "display": {
+                "x": -24,
+                "y": -252
+            },
+            "children": [
+                "a1bf904c-91b5-4342-8f95-af1b5a0b5b00",
+                "f257dd20-25db-401d-944b-c0cd571df00f"
+            ]
+        },
+        "a1bf904c-91b5-4342-8f95-af1b5a0b5b00": {
+            "id": "a1bf904c-91b5-4342-8f95-af1b5a0b5b00",
+            "name": "ContinuousCondition",
+            "title": "...?? targetDistance: <targetDistance>",
+            "description": "",
+            "properties": {
+                "targetDistance": ">250"
+            },
+            "display": {
+                "x": -240,
+                "y": -108
+            },
+            "child": "7715927d-53fe-4bf3-8fc9-7384de5fe00a"
+        },
+        "7715927d-53fe-4bf3-8fc9-7384de5fe00a": {
+            "id": "7715927d-53fe-4bf3-8fc9-7384de5fe00a",
+            "name": "sequence",
+            "title": "Sequence",
+            "description": "Takes multiple children and runs them from top to bottom (or left to right).  If any fail, this node fails, if all succeed, this node succeeds.",
+            "properties": {},
+            "display": {
+                "x": -240,
+                "y": -12
+            },
+            "children": [
+                "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6",
+                "cedeef63-ddb4-442b-9fab-b5277805dbec"
+            ]
+        },
+        "3032ec2f-da26-4533-b255-e1246d34a194": {
+            "id": "3032ec2f-da26-4533-b255-e1246d34a194",
+            "name": "Wait",
+            "title": "Wait <min>...<max>",
+            "description": "",
+            "properties": {
+                "min": 0,
+                "max": 1
+            },
+            "display": {
+                "x": 60,
+                "y": 84
+            }
+        },
+        "f257dd20-25db-401d-944b-c0cd571df00f": {
+            "id": "f257dd20-25db-401d-944b-c0cd571df00f",
+            "name": "ContinuousCondition",
+            "title": "...?? targetDistance: <targetDistance>",
+            "description": "",
+            "properties": {
+                "targetDistance": ">250"
+            },
+            "display": {
+                "x": 180,
+                "y": -108
+            },
+            "child": "cb106b52-6a8b-4c80-9408-644fbfdc3847"
+        },
+        "cb106b52-6a8b-4c80-9408-644fbfdc3847": {
+            "id": "cb106b52-6a8b-4c80-9408-644fbfdc3847",
+            "name": "sequence",
+            "title": "Sequence",
+            "description": "Takes multiple children and runs them from top to bottom (or left to right).  If any fail, this node fails, if all succeed, this node succeeds.",
+            "properties": {},
+            "display": {
+                "x": 180,
+                "y": -12
+            },
+            "children": [
+                "3032ec2f-da26-4533-b255-e1246d34a194",
+                "9a6a86a3-99b2-4f76-90e3-754c0144fbd0"
+            ]
+        }
+    },
+    "display": {
+        "camera_x": 894.5,
+        "camera_y": 532.5,
+        "camera_z": 0.75,
+        "x": -24,
+        "y": -360
+    },
+    "custom_nodes": [
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Condition",
+            "category": "condition",
+            "title": "ContinuousCondition",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Approach",
+            "category": "action",
+            "title": "Approach",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Fallback",
+            "category": "action",
+            "title": "Fallback",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Wait",
+            "category": "action",
+            "title": "Wait <min>...<max>",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "ContinuousCondition",
+            "category": "decorator",
+            "title": "...Condition targetDistance: <targetDistance>",
+            "description": null,
+            "properties": {}
+        }
+    ]
+}

@@ -1,4 +1,3 @@
-
 local input = require('openmw.input')
 
 local self = require('openmw.self')

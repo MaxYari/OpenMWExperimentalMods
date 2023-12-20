@@ -17,7 +17,23 @@ local core = require('openmw.core')
 
 
 local bloodTimers = {}
-local bloodDuration = 0.5
+local bloodDuration = 0.3
+
+local function spawnBlood(e)
+   local activatorRecord = {}
+   activatorRecord.model = "meshes\\vfx\\blood.nif"
+
+   local bloodGrazedRecordDraft = types.Activator.createRecordDraft(activatorRecord);
+   local newRecord = world.createRecord(bloodGrazedRecordDraft)
+   local blood = world.createObject(newRecord.id, 1)
+
+   blood:teleport(e.target.cell, e.damageData.hitPosition)
+
+   local timerData = {}
+   timerData.endTime = core.getRealTime() + bloodDuration
+   timerData.object = blood
+   table.insert(bloodTimers, timerData)
+end
 
 return {
    engineHandlers = {
@@ -37,22 +53,8 @@ return {
    },
    eventHandlers = {
       GCombat_grazed_hit = function(e)
-         print("Got global hit event")
 
-         local activatorRecord = {}
-         activatorRecord.model = "meshes\\vfx\\blood.nif"
-         activatorRecord.name = "GCombat blood grazed hit VFX"
 
-         local bloodGrazedRecordDraft = types.Activator.createRecordDraft(activatorRecord);
-         local newRecord = world.createRecord(bloodGrazedRecordDraft)
-         local blood = world.createObject(newRecord.id, 1)
-
-         blood:teleport(e.target.cell, e.damageData.hitPosition)
-
-         local timerData = {}
-         timerData.endTime = core.getRealTime() + bloodDuration
-         timerData.object = blood
-         table.insert(bloodTimers, timerData)
       end,
    },
 }

@@ -70,8 +70,15 @@ local record self
 
   --[[
       Moves actor using actor collision logic, accounting for slopes, steps e.t.c.
+      Completely overrides current frame's actor velocity
     ]]    
   setActorWorldVelocity: function(self: self, velocity: openmw_util.Vector3)
+
+  --[[
+      Alters actor's inertia value. Inertia is used to retain velocity during jumps and slope slides.
+      It is also responsible for the fall damage
+    ]]    
+  setActorLocalInertia: function(self: self, inertia: openmw_util.Vector3)
 
   --[[
       Sets actor collision parameters - walkable slopes e.t.c

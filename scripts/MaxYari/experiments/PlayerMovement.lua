@@ -28,16 +28,19 @@ local function TestActorMovement(dt)
 
 
 
-
-
-
-
-
+   if airDashVelocity:length() > 0 and not types.Actor.isOnGround(self.object) and (now - airDashStartTime < airDashDuration) then
+      self:setActorWorldVelocity(airDashVelocity)
+   else
+      airDashVelocity = util.vector3(0, 0, 0)
+   end
 
    if resetingInertia == 1 then
       print("Reset inertia")
       self:setActorLocalInertia(util.vector3(0, 0, 0))
-      resetingInertia = 0
+      self:setActorFlying(true)
+      resetingInertia = 2
+   elseif resetingInertia == 2 then
+      self:setActorFlying(false)
    end
 end
 

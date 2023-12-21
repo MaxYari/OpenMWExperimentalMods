@@ -4,7 +4,7 @@
     "id": "cf5e1716-942e-412d-a666-7ab6b58fa5ff",
     "title": "Root",
     "description": "The root of this tree.  The title of this node sets the title of the tree.  You must have one tree called \"Root\".  You can set tree-wide properties on this node and reference them in other places with the following template syntax: `{{key_name}}`.",
-    "root": "a171b020-6ab2-49a3-a04c-5e0c03d240df",
+    "root": "34a5adfa-10e2-445a-8d1c-63aea99eabf3",
     "properties": {},
     "nodes": {
         "cedeef63-ddb4-442b-9fab-b5277805dbec": {
@@ -14,8 +14,8 @@
             "description": "",
             "properties": {},
             "display": {
-                "x": -132,
-                "y": 84
+                "x": 312,
+                "y": 456
             }
         },
         "9a6a86a3-99b2-4f76-90e3-754c0144fbd0": {
@@ -25,22 +25,22 @@
             "description": "",
             "properties": {},
             "display": {
-                "x": 276,
-                "y": 84
+                "x": 852,
+                "y": 456
             }
         },
         "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6": {
             "id": "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6",
             "name": "Wait",
             "title": "Wait <min>...<max>",
-            "description": "",
+            "description": null,
             "properties": {
-                "min": 3,
-                "max": 5
+                "min": 0.1,
+                "max": 0.4
             },
             "display": {
-                "x": -360,
-                "y": 84
+                "x": -48,
+                "y": 456
             }
         },
         "a171b020-6ab2-49a3-a04c-5e0c03d240df": {
@@ -50,8 +50,8 @@
             "description": "Takes multiple children and runs them from top to bottom (or left to right), succeeding when any one succeeds.  Fails if all fail.",
             "properties": {},
             "display": {
-                "x": -24,
-                "y": -252
+                "x": 408,
+                "y": 96
             },
             "children": [
                 "a1bf904c-91b5-4342-8f95-af1b5a0b5b00",
@@ -62,13 +62,13 @@
             "id": "a1bf904c-91b5-4342-8f95-af1b5a0b5b00",
             "name": "ContinuousCondition",
             "title": "...?? targetDistance: <targetDistance>",
-            "description": "",
+            "description": null,
             "properties": {
                 "targetDistance": ">250"
             },
             "display": {
-                "x": -240,
-                "y": -108
+                "x": 204,
+                "y": 264
             },
             "child": "7715927d-53fe-4bf3-8fc9-7384de5fe00a"
         },
@@ -79,11 +79,12 @@
             "description": "Takes multiple children and runs them from top to bottom (or left to right).  If any fail, this node fails, if all succeed, this node succeeds.",
             "properties": {},
             "display": {
-                "x": -240,
-                "y": -12
+                "x": 204,
+                "y": 360
             },
             "children": [
                 "9e6fa711-4c4d-485c-85b2-d05a4a8eacd6",
+                "6821e86b-87aa-4c77-8add-42f98f7a784b",
                 "cedeef63-ddb4-442b-9fab-b5277805dbec"
             ]
         },
@@ -93,12 +94,12 @@
             "title": "Wait <min>...<max>",
             "description": "",
             "properties": {
-                "min": 1,
-                "max": 3
+                "min": 0.1,
+                "max": 0.4
             },
             "display": {
-                "x": 60,
-                "y": 84
+                "x": 504,
+                "y": 456
             }
         },
         "f257dd20-25db-401d-944b-c0cd571df00f": {
@@ -110,8 +111,8 @@
                 "targetDistance": "<150"
             },
             "display": {
-                "x": 180,
-                "y": -108
+                "x": 624,
+                "y": 264
             },
             "child": "cb106b52-6a8b-4c80-9408-644fbfdc3847"
         },
@@ -122,21 +123,128 @@
             "description": "Takes multiple children and runs them from top to bottom (or left to right).  If any fail, this node fails, if all succeed, this node succeeds.",
             "properties": {},
             "display": {
-                "x": 180,
-                "y": -12
+                "x": 624,
+                "y": 360
             },
             "children": [
                 "3032ec2f-da26-4533-b255-e1246d34a194",
+                "5b3029de-e876-41ae-88d5-7f3aed9fb219",
                 "9a6a86a3-99b2-4f76-90e3-754c0144fbd0"
             ]
+        },
+        "34a5adfa-10e2-445a-8d1c-63aea99eabf3": {
+            "id": "34a5adfa-10e2-445a-8d1c-63aea99eabf3",
+            "name": "sequence",
+            "title": "Sequence",
+            "description": "Takes multiple children and runs them from top to bottom (or left to right).  If any fail, this node fails, if all succeed, this node succeeds.",
+            "properties": {},
+            "display": {
+                "x": 588,
+                "y": -228
+            },
+            "children": [
+                "2aedcae2-b51d-46df-841d-2b89930315ee",
+                "87f75bfe-0c21-4e64-8b93-a73dd6674608",
+                "8d9265aa-4065-4377-85d4-8502a7f88060"
+            ]
+        },
+        "b4f0e91c-8794-46f9-85c8-80ebd9dce45e": {
+            "id": "b4f0e91c-8794-46f9-85c8-80ebd9dce45e",
+            "name": "StartJump",
+            "title": "StartJump",
+            "description": "",
+            "properties": {},
+            "display": {
+                "x": 936,
+                "y": 288
+            }
+        },
+        "87f75bfe-0c21-4e64-8b93-a73dd6674608": {
+            "id": "87f75bfe-0c21-4e64-8b93-a73dd6674608",
+            "name": "always_succeed",
+            "title": "Always succeed",
+            "description": "Takes one child and succeeds regardless of its outcome.",
+            "properties": {},
+            "display": {
+                "x": 408,
+                "y": 0
+            },
+            "child": "a171b020-6ab2-49a3-a04c-5e0c03d240df"
+        },
+        "1dfbfc49-e689-4654-8a15-7576f8b7ebeb": {
+            "id": "1dfbfc49-e689-4654-8a15-7576f8b7ebeb",
+            "name": "RandomCondition",
+            "title": "RandomCondition <probability>%",
+            "description": "",
+            "properties": {
+                "probability": 50
+            },
+            "display": {
+                "x": 936,
+                "y": 180
+            },
+            "child": "b4f0e91c-8794-46f9-85c8-80ebd9dce45e"
+        },
+        "8d9265aa-4065-4377-85d4-8502a7f88060": {
+            "id": "8d9265aa-4065-4377-85d4-8502a7f88060",
+            "name": "Cooldown",
+            "title": "Cooldown <duration>s",
+            "description": "",
+            "properties": {
+                "duration": 3
+            },
+            "display": {
+                "x": 936,
+                "y": 12
+            },
+            "child": "1dfbfc49-e689-4654-8a15-7576f8b7ebeb"
+        },
+        "2aedcae2-b51d-46df-841d-2b89930315ee": {
+            "id": "2aedcae2-b51d-46df-841d-2b89930315ee",
+            "name": "SwitchRun",
+            "title": "SwitchRun to <state>",
+            "description": "",
+            "properties": {
+                "state": "true"
+            },
+            "display": {
+                "x": 96,
+                "y": 0
+            }
+        },
+        "6821e86b-87aa-4c77-8add-42f98f7a784b": {
+            "id": "6821e86b-87aa-4c77-8add-42f98f7a784b",
+            "name": "SwitchRun",
+            "title": "SwitchRun to <state>",
+            "description": "",
+            "properties": {
+                "state": "false"
+            },
+            "display": {
+                "x": 132,
+                "y": 456
+            }
+        },
+        "5b3029de-e876-41ae-88d5-7f3aed9fb219": {
+            "id": "5b3029de-e876-41ae-88d5-7f3aed9fb219",
+            "name": "SwitchRun",
+            "title": "SwitchRun to <state>",
+            "description": "",
+            "properties": {
+                "state": "true"
+            },
+            "display": {
+                "x": 684,
+                "y": 456
+            }
         }
     },
     "display": {
-        "camera_x": 771.5,
-        "camera_y": 537.5,
+        "camera_x": 430.5,
+        "camera_y": 360.5,
         "camera_z": 0.75,
-        "x": -24,
-        "y": -360
+        "x": 588,
+        "y": -348
     },
     "custom_nodes": [
         {
@@ -169,20 +277,67 @@
         {
             "version": "0.3.0",
             "scope": "node",
-            "name": "Wait",
-            "category": "action",
-            "title": "Wait <min>...<max>",
+            "name": "ContinuousCondition",
+            "category": "decorator",
+            "title": "...Condition targetDistance: <targetDistance>",
             "description": null,
             "properties": {}
         },
         {
             "version": "0.3.0",
             "scope": "node",
-            "name": "ContinuousCondition",
-            "category": "decorator",
-            "title": "...Condition targetDistance: <targetDistance>",
+            "name": "StartJump",
+            "category": "action",
+            "title": "StartJump",
             "description": null,
             "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "RandomOutcome",
+            "category": "action",
+            "title": "RandomOutcome <probability>%",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "RandomCondition",
+            "category": "decorator",
+            "title": "RandomCondition <probability>%",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Cooldown",
+            "category": "decorator",
+            "title": "Cooldown <duration>s",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Wait",
+            "category": "action",
+            "title": "Wait <min>...<max>s",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "SwitchRun",
+            "category": "action",
+            "title": "SwitchRun to <state>",
+            "description": null,
+            "properties": {
+                "state": "true"
+            }
         }
     ]
 }

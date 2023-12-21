@@ -17,7 +17,11 @@ if self.object.recordId ~= "dralcea arethi" then return end
 -- Behaviour state of this actor --
 -----------------------------------
 local state = {
+   -- Permanent state
+   run = true,
    clear = function(self)
+      -- Reset every frame
+      self.jump = false
       self.attack = 0
       self.movement = 0
       self.sideMovement = 0
@@ -37,13 +41,33 @@ local actionRegistry = {}
 actionRegistry['select'] = BehaviourTree.Priority
 actionRegistry['sequence'] = BehaviourTree.Sequence
 actionRegistry['ContinuousCondition'] = BehaviourTree.ContinuousCondition
+actionRegistry['always_succeed'] = BehaviourTree.AlwaysSucceedDecorator
 
+
+-- Utility functions ------------------
+---------------------------------------
+local function durationOrRange(p)
+   local dur = p.duration
+   if p.max ~= nil then
+      dur = p.min + (p.max - p.min) * math.random()
+   end
+   return dur
+end
+
+local function strToBool(str)
+   if str == "true" then
+      return true
+   else
+      return false
+   end
+end
 
 -- Custom behaviours ------------------
 ---------------------------------------
-function MoveAction(params)
+function MoveAction(config)
    if not direction then direction = 1 end
-   if not params then params = {} end
+
+   local props = config.props
 
    return BehaviourTree.Task:new({
       rname = 'MoveAction', -- rname stands for Readable Name
@@ -53,8 +77,8 @@ function MoveAction(params)
       end,
 
       run = function(task, state)
-         if params.movement ~= nil then state.movement = params.movement end
-         if params.sideMovement ~= nil then state.sideMovement = params.sideMovement end
+         if props.movement ~= nil then state.movement = props.movement end
+         if props.sideMovement ~= nil then state.sideMovement = props.sideMovement end
          task:running()
          --task:fail()
          --task:running()
@@ -69,40 +93,128 @@ end
 actionRegistry['MoveAction'] = MoveAction
 
 function Approach()
-   return MoveAction({ movement = 1 })
+   return MoveAction({ props = { movement = 1 } })
 end
 
 actionRegistry['Approach'] = Approach
 
 function Fallback()
-   return MoveAction({ movement = -1 })
+   return MoveAction({ props = { movement = -1 } })
 end
 
 actionRegistry['Fallback'] = Fallback
 
-function Strafe(params)
-   return MoveAction({ sideMovement = params.direction })
+function Strafe(config)
+   local props = config.props
+   props.sideMovement = props.direction
+   return MoveAction(config)
 end
 
 actionRegistry['Strafe'] = Strafe
 
-function Wait(params)
+function SwitchRun(config)
+   local props = config.props
+   return BehaviourTree.Task:new({
+      rname = 'SwitchRun', -- rname stands for Readable Name
+
+      run = function(task, state)
+         state.run = strToBool(props.state)
+         task:success()
+         --task:fail()
+         --task:running()
+      end
+   })
+end
+
+actionRegistry['SwitchRun'] = SwitchRun
+
+function StartJump(config)
+   return BehaviourTree.Task:new({
+      rname = 'StartJump', -- rname stands for Readable Name
+
+      run = function(task, state)
+         state.jump = true
+         task:success()
+         --task:fail()
+         --task:running()
+      end,
+
+      finish = function(task, state)
+         print("StartJump finished")
+      end
+   })
+end
+
+actionRegistry['StartJump'] = StartJump
+
+function RandomOutcome(config)
+   local props = config.props
+   return BehaviourTree.Task:new({
+      rname = 'RandomOutcome', -- rname stands for Readable Name
+
+      run = function(task, state)
+         if props.probability > math.random() * 100 then
+            task:success()
+         else
+            task:fail()
+         end
+      end
+   })
+end
+
+actionRegistry['RandomOutcome'] = RandomOutcome
+
+function RandomCondition(config)
+   local p = config.props
+   return BehaviourTree.Condition:new({
+      conditionFn = function(task, state)
+         if p.probability > math.random() * 100 then
+            return true
+         else
+            return false
+         end
+      end,
+
+      node = config.node
+   })
+end
+
+actionRegistry['RandomCondition'] = RandomCondition
+
+function Cooldown(config)
+   local p = config.props
+   return BehaviourTree.Condition:new({
+      conditionFn = function(task, state)
+         local now = core.getRealTime()
+         if not state.duration then
+            task.duration = durationOrRange(p)
+         end
+         if not state.lastUseTime or now - state.lastUseTime > task.duration then
+            state.lastUseTime = now
+            return true
+         end
+      end,
+
+      node = config.node
+   })
+end
+
+actionRegistry['Cooldown'] = Cooldown
+
+function Wait(config)
+   local p = config.props
    return BehaviourTree.Task:new({
       rname = 'wait',
       duration = 0,
 
       start = function(t, obj)
          print(t.rname .. "started")
-         t.duration = params.duration
-         if params.max ~= nil then
-            t.duration = params.min + (params.max - params.min) * math.random()
-            print("wait duration " .. t.duration)
-         end
+         t.duration = durationOrRange(p)
          t.startTime = core.getRealTime()
       end,
 
       run = function(t, obj)
-         now = core.getRealTime()
+         local now = core.getRealTime()
          if now - t.startTime > t.duration then
             t:success()
          else
@@ -138,6 +250,7 @@ local treeData = readJSON("MovementTree.json")
 
 local function parseNode(node)
    local initData = {}
+   initData.props = node.properties
 
    if node.child then
       initData.node = parseNode(treeData.nodes[node.child])
@@ -169,7 +282,7 @@ local function parseNode(node)
    if type(fn) == "table" then
       return fn:new(initData)
    elseif type(fn) == "function" then
-      return fn(node.properties)
+      return fn(initData)
    end
 end
 
@@ -201,9 +314,11 @@ local function onUpdate(dt)
 
    btree:run()
 
+   self.controls.run = state.run
    self.controls.movement = state.movement
    self.controls.sideMovement = state.sideMovement
    self.controls.use = state.attack
+   self.controls.jump = state.jump
 end
 
 

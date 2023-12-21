@@ -8,7 +8,6 @@ function Condition:initialize(config)
 end
 
 function Condition:start(object)
-  print("Starting condition")
   self.childCanRun = false
   local conditionMet = self.conditionFn(self, object)
 

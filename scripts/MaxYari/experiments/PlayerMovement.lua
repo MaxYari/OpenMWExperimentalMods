@@ -1,3 +1,4 @@
+
 local input = require('openmw.input')
 
 local self = require('openmw.self')
@@ -6,7 +7,7 @@ local core = require('openmw.core')
 local types = require('openmw.types')
 local camera = require('openmw.camera')
 
-local resetingInertia = false;
+local resetingInertia = 0;
 local airJumpStrength = 500;
 local airJumpVelocity = util.vector3(0, 0, 0);
 
@@ -30,8 +31,12 @@ local function TestActorMovement(dt)
       airJumpVelocity = util.vector3(0, 0, 0)
    end
 
-   if resetingInertia then
+   if resetingInertia == 1 then
+      self:setActorFlying(true)
+      resetingInertia = 2
+   elseif resetingInertia == 2 then
       self:setActorFlying(false)
+      resetingInertia = 0
    end
 end
 
@@ -41,8 +46,7 @@ local function AirJump()
 
 
 
-      resetingInertia = true
-      self:setActorFlying(true)
+      resetingInertia = 1
 
 
       local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
@@ -52,7 +56,8 @@ end
 
 return {
    engineHandlers = {
-      onUpdate = function(dt)
+      onPhysicsUpdate = function(dt)
+         print("Physics update")
          TestActorMovement(dt)
       end,
       onInputAction = function(action)

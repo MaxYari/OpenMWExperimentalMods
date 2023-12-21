@@ -7,7 +7,7 @@ local core = require('openmw.core')
 local types = require('openmw.types')
 local camera = require('openmw.camera')
 
-local resetingInertia = false;
+local resetingInertia = 0;
 local airJumpStrength = 500;
 local airJumpVelocity = util.vector3(0,0,0);
 
@@ -31,8 +31,12 @@ local function TestActorMovement(dt: number)
         airJumpVelocity = util.vector3(0,0,0)
     end
 
-    if resetingInertia then
+    if resetingInertia == 1 then
+        self:setActorFlying(true)
+        resetingInertia = 2        
+    elseif resetingInertia == 2 then
         self:setActorFlying(false)
+        resetingInertia = 0
     end
 end
 
@@ -42,8 +46,7 @@ local function AirJump()
 
         -- Set actor flying for a single frame to purge an accumulated inertia (gravity, jump inertia)
         -- This doesnt alway work though, not exactly sure why, perhaps due to differences of main thread frame and physics frame timings!
-        resetingInertia = true
-        self:setActorFlying(true)
+        resetingInertia = 1
 
         -- Set the air velocity to be applied continuously in the frame callback
         local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
@@ -53,7 +56,8 @@ end
 
 return {
     engineHandlers = {
-        onUpdate = function(dt: number)
+        onPhysicsUpdate = function(dt: number)
+            print("Physics update")
             TestActorMovement(dt)
         end,
         onInputAction = function(action: number)

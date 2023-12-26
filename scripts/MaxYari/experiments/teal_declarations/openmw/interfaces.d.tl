@@ -5,6 +5,7 @@
 local scripts_omw_activationhandlers = require("scripts.omw.activationhandlers")
 local scripts_omw_ai = require("scripts.omw.ai")
 local scripts_omw_camera_camera = require("scripts.omw.camera.camera")
+local scripts_omw_controls = require("scripts.omw.controls")
 local scripts_omw_mwui_init = require("scripts.omw.mwui.init")
 local scripts_omw_settings_player = require("scripts.omw.settings.player")
 local scripts_omw_ui = require("scripts.omw.ui")
@@ -14,6 +15,8 @@ local record interfaces
   Activation: scripts_omw_activationhandlers
   
   Camera: scripts_omw_camera_camera
+
+  Controls: scripts_omw_controls
   
   MWUI: scripts_omw_mwui_init
   

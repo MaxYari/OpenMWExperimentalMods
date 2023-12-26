@@ -6,95 +6,42 @@ local self = require('openmw.self')
 local util = require('openmw.util')
 local core = require('openmw.core')
 local types = require('openmw.types')
+local camera = require('openmw.camera')
+local I = require('openmw.interfaces')
 
-local grabDistance = 200;
-local maxDragImpulse = 300;
-local throwImpulse = 10.0;
+-- Config ------------------
+----------------------------
+local distanceToPlayer = 400
+local verticalOffset = 100
+----------------------------
+----------------------------
 
-local activeObject : core.GameObject;
-local holdDistance : number;
-local holdOffset : util.Vector3;
 
-local function GrabObject()
-    local position = camera.getPosition()
-    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
-    local pickupDistance = grabDistance
-    local castResult = nearby.castRenderingRay(position, position + direction * pickupDistance)
-    local object = castResult.hitObject
+local function onUpdate(dt: number)
+    camera.setMode(camera.MODE.Static)
+    camera.setStaticPosition(self.object.position + util.vector3(0,1,0)*distanceToPlayer + util.vector3(0,0,1)*verticalOffset)
+    -- Adjust yaw to alway look at the player
+    camera.setYaw(camera.getYaw()+ 1*dt)
+    camera.setPitch(0)
+    camera.setRoll(0)  
     
-    if not object then return end    
+    local look = self.object.position - camera.getPosition()
+    local yaw = math.atan2(look.x, look.y)
     
-    activeObject = object
-    holdDistance = (castResult.hitPos - position):length()
-    holdOffset = castResult.hitPos - activeObject.rigidBodyPosition
-    --print("Hold distance")
-    --print(holdDistance)
-    --print("Hold offset")
-    --print(holdOffset)
-
-    ui.showMessage("Grabbing " .. activeObject.recordId)
-
-    --activeObject.applyImpulse(activeObject, direction*25, holdOffset)
-    --print("Rigidbody position " .. tostring(activeObject.rigidBodyPosition));
-    --print("Rigidbody rotation " .. tostring(activeObject.rigidBodyRotation));
-
-    activeObject:sendEvent('GrabbedBy', {actor=self.object});
-    
+    camera.setYaw(yaw)
 end
-
-local function DropObject()
-    activeObject = nil
-end
-
-local function HoldingActiveObject(dt: number)
-    if not activeObject then return end
-
-    local position = camera.getPosition()
-    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
-    local objectHoldPos = position + direction*holdDistance;
-
-    
-    local currentVelocity = activeObject:getRigidBodyVelocity(util.vector3(0,0,0));
-    local pushVector = objectHoldPos - activeObject.rigidBodyPosition - currentVelocity/4;
-    
-    if pushVector:length() > maxDragImpulse then
-        pushVector = pushVector:normalize() * maxDragImpulse
-    end
-    
-    -- Note: offset will not work with this setup, we need to calculate push vector as a difference between current hold offset position (transformed) and screen center
-    -- Also: impulse offset uses local object space! But its not rotated? Just based on center of mass. So i need to save that offset together with initial rotation and then
-    -- each frame unrotate the offset and rotate it to the new rotation?
-    -- No i believe its applied to a non-rotated version, so it is on object local space. So i need to save it and to apply it properly also transform it by the object transform? Need to test this
-    -- No i thinks its actually NOT rotated, seems like all apply things are happening in a world space.
-    activeObject:applyImpulse(pushVector, util.vector3(0,0,0))
-
-    if input.isMouseButtonPressed(1) then
-        -- Calculating throw strength
-        local strength = types.Actor.stats.attributes.strength(self.object);
-        throwImpulse = util.clamp(util.remap(strength.modified, 40, 100, 500, 1500),750,1500);
-        print("Calculated throwImpulse " .. throwImpulse);
-
-        -- Launching!
-        activeObject:applyImpulse(direction*throwImpulse, util.vector3(0,0,0))
-        DropObject()
-    end
-end
-
-
 
 return {
     engineHandlers = {
-        onUpdate = function(dt: number)
-            HoldingActiveObject(dt)
-        end,
+        onUpdate = onUpdate,
         onKeyPress = function(key: input.KeyboardEvent)
             if key.symbol == 'x' then
-                GrabObject()
+                
             end
         end,
         onKeyRelease = function(key: input.KeyboardEvent)
             if key.symbol == 'x' then
-                DropObject()
+                
             end
         end
     }

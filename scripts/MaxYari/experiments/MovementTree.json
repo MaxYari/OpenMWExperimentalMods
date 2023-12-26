@@ -106,7 +106,7 @@
             "id": "f257dd20-25db-401d-944b-c0cd571df00f",
             "name": "ContinuousCondition",
             "title": "...?? targetDistance: <targetDistance>",
-            "description": "",
+            "description": null,
             "properties": {
                 "targetDistance": "<150"
             },
@@ -151,8 +151,8 @@
         "b4f0e91c-8794-46f9-85c8-80ebd9dce45e": {
             "id": "b4f0e91c-8794-46f9-85c8-80ebd9dce45e",
             "name": "StartJump",
-            "title": "StartJump",
-            "description": "",
+            "title": "Jump",
+            "description": null,
             "properties": {},
             "display": {
                 "x": 936,
@@ -240,22 +240,13 @@
         }
     },
     "display": {
-        "camera_x": 430.5,
-        "camera_y": 360.5,
+        "camera_x": 332.5,
+        "camera_y": 371.5,
         "camera_z": 0.75,
         "x": 588,
         "y": -348
     },
     "custom_nodes": [
-        {
-            "version": "0.3.0",
-            "scope": "node",
-            "name": "Condition",
-            "category": "condition",
-            "title": "ContinuousCondition",
-            "description": null,
-            "properties": {}
-        },
         {
             "version": "0.3.0",
             "scope": "node",
@@ -271,24 +262,6 @@
             "name": "Fallback",
             "category": "action",
             "title": "Fallback",
-            "description": null,
-            "properties": {}
-        },
-        {
-            "version": "0.3.0",
-            "scope": "node",
-            "name": "ContinuousCondition",
-            "category": "decorator",
-            "title": "...Condition targetDistance: <targetDistance>",
-            "description": null,
-            "properties": {}
-        },
-        {
-            "version": "0.3.0",
-            "scope": "node",
-            "name": "StartJump",
-            "category": "action",
-            "title": "StartJump",
             "description": null,
             "properties": {}
         },
@@ -338,6 +311,60 @@
             "properties": {
                 "state": "true"
             }
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "StateCondition",
+            "category": "decorator",
+            "title": "StateCondtion",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "ContinuousCondition",
+            "category": "decorator",
+            "title": "...Condition",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "StateContinuousCondition",
+            "category": "decorator",
+            "title": "State...Condition",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "Jump",
+            "category": "action",
+            "title": "Jump",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "ReleaseAttack",
+            "category": "action",
+            "title": "ReleaseAttack",
+            "description": null,
+            "properties": {}
+        },
+        {
+            "version": "0.3.0",
+            "scope": "node",
+            "name": "HoldAttack",
+            "category": "action",
+            "title": "HoldAttack",
+            "description": null,
+            "properties": {}
         }
     ]
 }

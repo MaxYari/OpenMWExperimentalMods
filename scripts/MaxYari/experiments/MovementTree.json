@@ -150,7 +150,7 @@
         },
         "b4f0e91c-8794-46f9-85c8-80ebd9dce45e": {
             "id": "b4f0e91c-8794-46f9-85c8-80ebd9dce45e",
-            "name": "StartJump",
+            "name": "Jump",
             "title": "Jump",
             "description": null,
             "properties": {},

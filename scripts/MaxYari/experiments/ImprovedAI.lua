@@ -8,7 +8,7 @@ local util = require('openmw.util')
 local I = require('openmw.interfaces')
 local anim = require('openmw.animation')
 
-local BehaviourTree = require('behaviourtree/behaviour_tree')
+local BT = require('behaviourtree/behaviour_tree')
 local json = require("json")
 
 
@@ -39,28 +39,6 @@ local state = {
 }
 
 
--- Registering behaviours -------------
----------------------------------------
-
--- Containes all the behaviours, used during JSON behaviourtree parsing
-
--- Adding built-in tree types into registry
-nodeClassRegistry['Sequence'] = BehaviourTree.Sequence
-nodeClassRegistry['Priority'] = BehaviourTree.Priority
-nodeClassRegistry['Repeater'] = BehaviourTree.RepeaterDecorator                       --Add
-nodeClassRegistry['RepeatUntilFailure'] = BehaviourTree.RepeatUntilFailureDecorator   --Add
-nodeClassRegistry['repeat_until_success'] = BehaviourTree.RepeatUntilSuccessDecorator --Add
-nodeClassRegistry['inverter'] = BehaviourTree.InvertDecorator
-
-nodeClassRegistry['AlwaysSucceed'] = BehaviourTree.AlwaysSucceedDecorator
-nodeClassRegistry['always_fail'] = BehaviourTree.AlwaysFailDecorator
-nodeClassRegistry['Cooldown'] = BahaviourTree.nodes.Cooldown
-
-nodeClassRegistry['Failer'] = BahaviourTree.nodes.Failer
-nodeClassRegistry['Succeeder'] = BahaviourTree.nodes.Succeeder
-nodeClassRegistry['Runner'] = BahaviourTree.nodes.Runner
-nodeClassRegistry['Wait'] = BahaviourTree.nodes.Wait
-
 
 
 -- Utility functions ------------------
@@ -77,45 +55,45 @@ local function strIsBool(str)
    return str == "true" or str == "false"
 end
 
+
+
 -- Custom behaviours ------------------
 ---------------------------------------
 function MoveAction(config)
    local props = config.properties
 
-   return BehaviourTree.Task:new({
-      rname = 'MoveAction', -- rname stands for Readable Name
+   config.start = function(t, state)
+      --print(t.rname .. "started " .. " in " .. direction .. " direction")
+   end
 
-      start = function(t, state)
-         --print(t.rname .. "started " .. " in " .. direction .. " direction")
-      end,
+   config.run = function(task, state)
+      if props.movement ~= nil then state.movement = props.movement end
+      if props.sideMovement ~= nil then state.sideMovement = props.sideMovement end
+      task:running()
+      --task:fail()
+      --task:running()
+   end
 
-      run = function(task, state)
-         if props.movement ~= nil then state.movement = props.movement end
-         if props.sideMovement ~= nil then state.sideMovement = props.sideMovement end
-         task:running()
-         --task:fail()
-         --task:running()
-      end,
+   config.finish = function(t, state)
+      print(t.rname .. " finished")
+   end
 
-      finish = function(t, state)
-         print(t.rname .. " finished")
-      end,
-   })
+   return BT.Task:new(config)
 end
 
-nodeClassRegistry['MoveAction'] = MoveAction
+BT.register('MoveAction', MoveAction)
 
 function Approach()
    return MoveAction({ props = { movement = 1 } })
 end
 
-nodeClassRegistry['Approach'] = Approach
+BT.register('Approach', Approach)
 
 function Fallback()
    return MoveAction({ props = { movement = -1 } })
 end
 
-nodeClassRegistry['Fallback'] = Fallback
+BT.register('Fallback', Fallback)
 
 function Strafe(config)
    local props = config.properties
@@ -123,87 +101,77 @@ function Strafe(config)
    return MoveAction(config)
 end
 
-nodeClassRegistry['Strafe'] = Strafe
+BT.register('Strafe', Strafe)
 
 function SwitchRun(config)
    local props = config.properties
-   return BehaviourTree.Task:new({
-      rname = 'SwitchRun', -- rname stands for Readable Name
 
-      run = function(task, state)
-         state.run = strToBool(props.state)
-         task:success()
-         --task:fail()
-         --task:running()
-      end
-   })
+   config.run = function(task, state)
+      state.run = strToBool(props.state)
+      task:success()
+      --task:fail()
+      --task:running()
+   end
+
+   return BT.Task:new(config)
 end
 
-nodeClassRegistry['SwitchRun'] = SwitchRun
+BT.register('SwitchRun', SwitchRun)
 
 function Jump(config)
-   return BehaviourTree.Task:new({
-      rname = 'Jump', -- rname stands for Readable Name
+   config.run = function(task, state)
+      state.jump = true
+      task:success()
+      --task:fail()
+      --task:running()
+   end
 
-      run = function(task, state)
-         state.jump = true
-         task:success()
-         --task:fail()
-         --task:running()
-      end,
+   config.finish = function(task, state)
+      print("Jump task finished (in game it only started)")
+   end
 
-      finish = function(task, state)
-         print("Jump task finished (in game it only started)")
-      end
-   })
+   return BT.Task:new(config)
 end
 
-nodeClassRegistry['Jump'] = Jump
+BT.register('Jump', Jump)
 
 function HoldAttack(config)
-   return BehaviourTree.Task:new({
-      rname = 'HoldAttack', -- rname stands for Readable Name
+   config.run = function(task, state)
+      state.attack = 1
+      task:running()
+      --task:fail()
+      --task:running()
+   end
 
-      run = function(task, state)
-         state.attack = 1
-         task:running()
-         --task:fail()
-         --task:running()
-      end,
+   config.finish = function(task, state)
+      print("HoldAttack finished")
+   end
 
-      finish = function(task, state)
-         print("HoldAttack finished")
-      end
-   })
+   return BT.Task:new(config)
 end
 
-nodeClassRegistry['HoldAttack'] = HoldAttack
+BT.register('HoldAttack', HoldAttack)
 
 function ReleaseAttack(config)
-   return BehaviourTree.Task:new({
-      rname = 'ReleaseAttack', -- rname stands for Readable Name
+   config.run = function(task, state)
+      state.attack = 0
+      task:success()
+      --task:fail()
+      --task:running()
+   end
 
-      run = function(task, state)
-         state.attack = 0
-         task:success()
-         --task:fail()
-         --task:running()
-      end,
+   config.finish = function(task, state)
+      print("ReleaseAttack finished")
+   end
 
-      finish = function(task, state)
-         print("ReleaseAttack finished")
-      end
-   })
+   return BT.Task:new(config)
 end
 
-nodeClassRegistry['ReleaseAttack'] = ReleaseAttack
+BT.register('ReleaseAttack', ReleaseAttack)
 
 
 
-
-
-
--- Parsin JSON behaviourtree -----
+-- Parsing JSON behaviourtree -----
 ----------------------------------
 local function readJSON(path)
    local myTable = {}
@@ -223,6 +191,7 @@ local treeData = readJSON("MovementTree.json")
 local function parseNode(node)
    local initData = {}
    initData.properties = node.properties
+   initData.rname = node.title
 
    if node.child then
       initData.childNode = parseNode(treeData.nodes[node.child])
@@ -234,7 +203,7 @@ local function parseNode(node)
       end
    end
 
-   local fn = nodeClassRegistry[node.name]
+   local fn = BT.NodeTypeRegistry.get(node.name)
    if not fn then
       return error("Can not find behaviour function " .. node.name)
    end
@@ -256,13 +225,13 @@ local function parseTreeData(td)
    local rootNode = parseNode(td.nodes[td.root])
    print(view(rootNode, 420))
 
-   return BehaviourTree:new({
+   return BT:new({
       tree = rootNode
    })
 end
 
 local btree = parseTreeData(treeData)
-btree:setObject(state)
+btree:setStateObject(state)
 
 
 
@@ -286,8 +255,9 @@ local function onUpdate(dt)
    --    state.attackState = "none"
    --    state.attackGroup = nil
    -- end
-   anim.getActiveGroup(self.object, 4)
 
+   -- This thing crashes!
+   -- anim.getActiveGroup(self.object, 4)
 
    -- Run the behaviour tree!
    btree:run()

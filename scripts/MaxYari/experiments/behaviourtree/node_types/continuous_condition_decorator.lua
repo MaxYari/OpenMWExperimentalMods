@@ -10,8 +10,8 @@ function ContinuousConditionDecorator:start(object)
 
   if conditionMet then
     self.childNodeRunning = true
-    self.node:setControl(self)
-    self.node:start(object)
+    self.childNode:setParentNode(self)
+    self.childNode:start(object)
   end
 end
 
@@ -20,10 +20,10 @@ function ContinuousConditionDecorator:run(object)
   local conditionMet = self.condition(self, object)
 
   if self.childNodeRunning and conditionMet then
-    self.node:call_run(object)
+    self.childNode:call_run(object)
   else
     if self.childNodeRunning then
-      self.node:fail(object)
+      self.childNode:fail(object)
     else
       self:fail(object)
     end
@@ -34,7 +34,7 @@ function ContinuousConditionDecorator:finish(object)
   --print("Continuous condition finished")
   -- This is responsible for calling finish on all children down the hierarchy
   if self.childNodeRunning then
-    self.node:finish(object)
+    self.childNode:finish(object)
   end
 end
 

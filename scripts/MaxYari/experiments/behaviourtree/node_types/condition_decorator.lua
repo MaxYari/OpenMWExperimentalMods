@@ -9,16 +9,16 @@ function ConditionDecorator:start(object)
 
   if conditionMet then
     self.childCanRun = true
-    self.node:setControl(self)
-    self.node:start(object)
+    self.childNode:setParentNode(self)
+    self.childNode:start(object)
   end
 end
 
 function ConditionDecorator:run(object)
   --print("Running condition")
   if self.childCanRun then
-    self.node:setControl(self)
-    self.node:call_run(object)
+    self.childNode:setParentNode(self)
+    self.childNode:call_run(object)
   else
     self:fail()
   end
@@ -27,7 +27,7 @@ end
 function ConditionDecorator:finish(object)
   -- This is responsible for calling finish on all children down the hierarchy
   if self.childCanRun then
-    self.node:finish(object)
+    self.childNode:finish(object)
   end
 end
 

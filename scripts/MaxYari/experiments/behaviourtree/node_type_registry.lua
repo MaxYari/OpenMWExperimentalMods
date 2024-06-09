@@ -10,7 +10,15 @@ function NodeTypeRegistry.register(name, node)
   end
 end
 
-function NodeTypeRegistry.getNode(name)
+function NodeTypeRegistry.replace(name, node)
+  if registeredNodes[name] == nil then
+    error("Can not replace node " .. name .. ", no such node in the registry.")
+  else
+    registeredNodes[name] = node
+  end
+end
+
+function NodeTypeRegistry.get(name)
   if type(name) == 'string' and registeredNodes[name] ~= nil then
     return registeredNodes[name]
   else

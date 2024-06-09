@@ -1,53 +1,99 @@
-local _PACKAGE                       = (...):match("^(.+)[%./][^%./]+") or ""
-local class                          = require(_PACKAGE .. '/middleclass')
-local Registry                       = require(_PACKAGE .. '/registry')
-local Node                           = require(_PACKAGE .. '/node_types/node')
-local BehaviourTree                  = class('BehaviourTree', Node)
+-- Global interface----------
+-- Not meant to be used the end-user directly, here mostly for the easy of access from another .lua files of this package
+_BehaviourTreeGlobals                      = {
+  debugLevel = 1,
+  branchString = "",
+  setDebugLevel = function(val)
+    _BehaviourTreeGlobals.debugLevel = val
+  end,
+  print = function(msg, lvl)
+    if lvl == nil then lvl = 1 end
+    if lvl <= _BehaviourTreeGlobals.debugLevel then print("[BT DEBUG]:", msg) end
+  end
+}
+----------------------------
 
-BehaviourTree.Node                   = Node
-BehaviourTree.Registry               = Registry
-BehaviourTree.Task                   = Node
-BehaviourTree.BranchNode             = require(_PACKAGE .. '/node_types/branch_node')
-BehaviourTree.Priority               = require(_PACKAGE .. '/node_types/priority')
-BehaviourTree.ActivePriority         = require(_PACKAGE .. '/node_types/active_priority')
-BehaviourTree.Random                 = require(_PACKAGE .. '/node_types/random')
-BehaviourTree.Sequence               = require(_PACKAGE .. '/node_types/sequence')
-BehaviourTree.Decorator              = require(_PACKAGE .. '/node_types/decorator')
-BehaviourTree.ContinuousCondition    = require(_PACKAGE .. '/node_types/continuous_condition')
-BehaviourTree.Condition              = require(_PACKAGE .. '/node_types/condition')
-BehaviourTree.InvertDecorator        = require(_PACKAGE .. '/node_types/invert_decorator')
-BehaviourTree.AlwaysFailDecorator    = require(_PACKAGE .. '/node_types/always_fail_decorator')
-BehaviourTree.AlwaysSucceedDecorator = require(_PACKAGE .. '/node_types/always_succeed_decorator')
+local _PACKAGE                             = (...):match("^(.+)[%./][^%./]+") or ""
+local class                                = require(_PACKAGE .. '/middleclass')
+local Registry                             = require(_PACKAGE .. '/registry')
+local NodeTypeRegistry                     = require(_PACKAGE .. '/node_type_registry')
+local Node                                 = require(_PACKAGE .. '/node_types/node')
+local PremadeNodes                         = require(_PACKAGE .. '/nodes/nodes')
+local BehaviourTree                        = class('BehaviourTree', Node)
+local g                                    = _BehaviourTreeGlobals
 
-BehaviourTree.register               = Registry.register
-BehaviourTree.getNode                = Registry.getNode
+BehaviourTree.childNode                    = Node
+BehaviourTree.Registry                     = Registry
+BehaviourTree.NodeTypeRegistry             = NodeTypeRegistry
+BehaviourTree.Task                         = Node
+BehaviourTree.BranchNode                   = require(_PACKAGE .. '/node_types/branch_node')
+BehaviourTree.Priority                     = require(_PACKAGE .. '/node_types/priority')
+BehaviourTree.ActivePriority               = require(_PACKAGE .. '/node_types/active_priority')
+BehaviourTree.Random                       = require(_PACKAGE .. '/node_types/random')
+BehaviourTree.Sequence                     = require(_PACKAGE .. '/node_types/sequence')
+BehaviourTree.Decorator                    = require(_PACKAGE .. '/node_types/decorator')
+BehaviourTree.ContinuousConditionDecorator = require(_PACKAGE .. '/node_types/continuous_condition_decorator')
+BehaviourTree.ConditionDecorator           = require(_PACKAGE .. '/node_types/condition_decorator')
+BehaviourTree.InvertDecorator              = require(_PACKAGE .. '/node_types/invert_decorator')
+BehaviourTree.AlwaysFailDecorator          = require(_PACKAGE .. '/node_types/always_fail_decorator')
+BehaviourTree.AlwaysSucceedDecorator       = require(_PACKAGE .. '/node_types/always_succeed_decorator')
+BehaviourTree.RepeaterDecorator            = require(_PACKAGE .. '/node_types/repeater_decorator')
 
+BehaviourTree.register                     = NodeTypeRegistry.register
+BehaviourTree.getNode                      = Registry.getNode
+BehaviourTree.setDebugLevel                = _BehaviourTreeGlobals.setDebugLevel
+
+-- IMPORTANT NOTES TO SELF:
+-- Dont forget to change readme, now "node" is a "childNode" and "nodes" are "childNodes"
+-- Also registry might be removed, so node name based registration will not be a thing
+-- BehaviourTree.register now registers node type, not node by name
+
+-- Registering premade nodes
+PremadeNodes.registerPremadeNodes(NodeTypeRegistry)
+NodeTypeRegistry.register('Sequence', BehaviourTree.Sequence)
+NodeTypeRegistry.register('Priority', BehaviourTree.Priority)
+NodeTypeRegistry.register('Random', BehaviourTree.Random)
+NodeTypeRegistry.register('Repeater', BehaviourTree.RepeaterDecorator)
+NodeTypeRegistry.register('RepeatUntilFailure', BehaviourTree.RepeatUntilFailureDecorator)   --Add
+NodeTypeRegistry.register('repeat_until_success', BehaviourTree.RepeatUntilSuccessDecorator) --Add
+NodeTypeRegistry.register('inverter', BehaviourTree.InvertDecorator)
+
+NodeTypeRegistry.register('AlwaysSucceed', BehaviourTree.AlwaysSucceedDecorator)
+NodeTypeRegistry.register('always_fail', BehaviourTree.AlwaysFailDecorator)
+
+
+-- Behaviour tree logic
 function BehaviourTree:run(object)
   if self.started then
     Node.running(self) --call running if we have control
   else
     self.started = true
-    self.object = object or self.object
+    self.stateObject = object or self.stateObject
     self.rootNode = Registry.getNode(self.tree)
-    self.rootNode:setControl(self)
-    self.rootNode:start(self.object)
-    self.rootNode:call_run(self.object)
+    self.rootNode:setParentNode(self)
+    self.rootNode:start(self.stateObject)
+    self.rootNode:call_run(self.stateObject)
   end
 end
 
 function BehaviourTree:running()
   Node.running(self)
   self.started = false
+
+  -- Single run finished - printing branch debug string and reseting it
+  g.print(g.branchString)
+  g.branchString = ""
 end
 
 function BehaviourTree:success()
-  self.rootNode:finish(self.object);
+  -- These calls bubble up from a child to the parent through self.parentNode:success()
+  self.rootNode:finish(self.stateObject);
   self.started = false
   Node.success(self)
 end
 
 function BehaviourTree:fail()
-  self.rootNode:finish(self.object);
+  self.rootNode:finish(self.stateObject);
   self.started = false
   Node.fail(self)
 end

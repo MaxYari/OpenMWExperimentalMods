@@ -2,6 +2,7 @@ local _PACKAGE = (...):match("^(.+)[%./][^%./]+"):gsub("[%./]?node_types", "")
 local class    = require(_PACKAGE .. '/middleclass')
 local Registry = require(_PACKAGE .. '/registry')
 local Node     = class('Node')
+local g        = _BehaviourTreeGlobals
 
 function Node:initialize(config)
   config = config or {}
@@ -9,6 +10,7 @@ function Node:initialize(config)
     self[k] = v
   end
 
+  -- Probably need to remove that completely
   if self.name ~= nil then
     Registry.register(self.name, self)
   end
@@ -30,29 +32,35 @@ function Node:call_run(object)
   success, fail, running = nil, nil, nil
 end
 
-function Node:setObject(object)
-  self.object = object
+function Node:setStateObject(object)
+  self.stateObject = object
 end
 
-function Node:setControl(control)
-  self.control = control
+function Node:setParentNode(control)
+  self.parentNode = control
 end
 
 function Node:running()
-  if self.control then
-    self.control:running(self)
+  -- Adding this node's name to a branch string for debug printing
+  local name = self.rname
+  if name == nil then name = "NONAME_NODE" end
+  g.branchString = g.branchString .. "--" .. name
+
+  -- Bubble running state to parent
+  if self.parentNode then
+    self.parentNode:running(self)
   end
 end
 
 function Node:success()
-  if self.control then
-    self.control:success()
+  if self.parentNode then
+    self.parentNode:success()
   end
 end
 
 function Node:fail()
-  if self.control then
-    self.control:fail()
+  if self.parentNode then
+    self.parentNode:fail()
   end
 end
 

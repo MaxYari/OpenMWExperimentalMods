@@ -1,6 +1,5 @@
 local _PACKAGE  = (...):match("^(.+)[%./][^%./]+"):gsub("[%./]?node_types", "")
 local class     = require(_PACKAGE .. '/middleclass')
-local Registry  = require(_PACKAGE .. '/registry')
 local Node      = require(_PACKAGE .. '/node_types/node')
 local Decorator = class('Decorator', Node)
 
@@ -11,11 +10,10 @@ function Decorator:initialize(config)
       2)
   end
   Node.initialize(self, config)
-  self.childNode = Registry.getNode(self.childNode)
 end
 
 function Decorator:setChildNode(node)
-  self.childNode = Registry.getNode(node)
+  self.childNode = node
 end
 
 function Decorator:start(object)

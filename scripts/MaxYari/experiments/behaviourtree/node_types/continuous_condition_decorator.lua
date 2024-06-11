@@ -19,23 +19,18 @@ function ContinuousConditionDecorator:run(object)
   --print("Running condition")
   local conditionMet = self.condition(self, object)
 
-  if self.childNodeRunning and conditionMet then
+  if conditionMet then
     self.childNode:call_run(object)
   else
     if self.childNodeRunning then
-      self.childNode:fail(object)
-    else
-      self:fail(object)
+      self.childNode:finish(object)
     end
+    self:fail(object)
   end
 end
 
 function ContinuousConditionDecorator:finish(object)
-  --print("Continuous condition finished")
-  -- This is responsible for calling finish on all children down the hierarchy
-  if self.childNodeRunning then
-    self.childNode:finish(object)
-  end
+  if self.childNodeRunning then self.childNode:finish(object) end
 end
 
 return ContinuousConditionDecorator

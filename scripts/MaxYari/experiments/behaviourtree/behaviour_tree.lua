@@ -3,6 +3,7 @@
 _BehaviourTreeGlobals                      = {
   debugLevel = 1,
   branchString = "",
+  lastPrintedBranchString = "",
   setDebugLevel = function(val)
     _BehaviourTreeGlobals.debugLevel = val
   end,
@@ -16,15 +17,14 @@ _BehaviourTreeGlobals                      = {
 local _PACKAGE                             = (...):match("^(.+)[%./][^%./]+") or ""
 local class                                = require(_PACKAGE .. '/middleclass')
 local Registry                             = require(_PACKAGE .. '/registry')
-local NodeTypeRegistry                     = require(_PACKAGE .. '/node_type_registry')
 local Node                                 = require(_PACKAGE .. '/node_types/node')
-local PremadeNodes                         = require(_PACKAGE .. '/nodes/nodes')
+local RegisterPremadeNodes                 = require(_PACKAGE .. '/nodes/nodes')
+local ParseProjectJsonTable                = require(_PACKAGE .. '/json_parser')
 local BehaviourTree                        = class('BehaviourTree', Node)
 local g                                    = _BehaviourTreeGlobals
 
 BehaviourTree.childNode                    = Node
 BehaviourTree.Registry                     = Registry
-BehaviourTree.NodeTypeRegistry             = NodeTypeRegistry
 BehaviourTree.Task                         = Node
 BehaviourTree.BranchNode                   = require(_PACKAGE .. '/node_types/branch_node')
 BehaviourTree.Priority                     = require(_PACKAGE .. '/node_types/priority')
@@ -39,8 +39,7 @@ BehaviourTree.AlwaysFailDecorator          = require(_PACKAGE .. '/node_types/al
 BehaviourTree.AlwaysSucceedDecorator       = require(_PACKAGE .. '/node_types/always_succeed_decorator')
 BehaviourTree.RepeaterDecorator            = require(_PACKAGE .. '/node_types/repeater_decorator')
 
-BehaviourTree.register                     = NodeTypeRegistry.register
-BehaviourTree.getNode                      = Registry.getNode
+BehaviourTree.register                     = Registry.register
 BehaviourTree.setDebugLevel                = _BehaviourTreeGlobals.setDebugLevel
 
 -- IMPORTANT NOTES TO SELF:
@@ -49,40 +48,49 @@ BehaviourTree.setDebugLevel                = _BehaviourTreeGlobals.setDebugLevel
 -- BehaviourTree.register now registers node type, not node by name
 
 -- Registering premade nodes
-PremadeNodes.registerPremadeNodes(NodeTypeRegistry)
-NodeTypeRegistry.register('Sequence', BehaviourTree.Sequence)
-NodeTypeRegistry.register('Priority', BehaviourTree.Priority)
-NodeTypeRegistry.register('Random', BehaviourTree.Random)
-NodeTypeRegistry.register('Repeater', BehaviourTree.RepeaterDecorator)
-NodeTypeRegistry.register('RepeatUntilFailure', BehaviourTree.RepeatUntilFailureDecorator)   --Add
-NodeTypeRegistry.register('repeat_until_success', BehaviourTree.RepeatUntilSuccessDecorator) --Add
-NodeTypeRegistry.register('inverter', BehaviourTree.InvertDecorator)
+RegisterPremadeNodes(Registry)
+Registry.register('Sequence', BehaviourTree.Sequence)
+Registry.register('Priority', BehaviourTree.Priority)
+Registry.register('Random', BehaviourTree.Random)
+Registry.register('Repeater', BehaviourTree.RepeaterDecorator)
+Registry.register('Inverter', BehaviourTree.InvertDecorator)
+Registry.register('AlwaysSucceed', BehaviourTree.AlwaysSucceedDecorator)
+Registry.register('AlwaysFail', BehaviourTree.AlwaysFailDecorator)
 
-NodeTypeRegistry.register('AlwaysSucceed', BehaviourTree.AlwaysSucceedDecorator)
-NodeTypeRegistry.register('always_fail', BehaviourTree.AlwaysFailDecorator)
+
 
 
 -- Behaviour tree logic
 function BehaviourTree:run(object)
+  self.name = "root"
   if self.started then
+    -- Note: If one of the nodes will not report atleast _some_ state (running/success/fail) during its run function or something will prevent that state from bubbling up to this level -
+    -- the whole tree will be stuck here forever. A very strange behaviour that probably should be re-evaluated in the future.
     Node.running(self) --call running if we have control
   else
     self.started = true
     self.stateObject = object or self.stateObject
-    self.rootNode = Registry.getNode(self.tree)
+    self.rootNode = self.tree
     self.rootNode:setParentNode(self)
     self.rootNode:start(self.stateObject)
     self.rootNode:call_run(self.stateObject)
   end
 end
 
+local function printBranch()
+  if g.lastPrintedBranchString ~= g.branchString then
+    g.print(g.branchString)
+    g.lastPrintedBranchString = g.branchString
+  end
+  g.branchString = ""
+end
+
 function BehaviourTree:running()
   Node.running(self)
   self.started = false
 
-  -- Single run finished - printing branch debug string and reseting it
-  g.print(g.branchString)
-  g.branchString = ""
+  -- Single run finished - printing branch debug string and reseting
+  printBranch()
 end
 
 function BehaviourTree:success()
@@ -96,6 +104,17 @@ function BehaviourTree:fail()
   self.rootNode:finish(self.stateObject);
   self.started = false
   Node.fail(self)
+end
+
+-- Json loading logic
+BehaviourTree.LoadFromJsonTable = function(jsonTable)
+  local trees = ParseProjectJsonTable(jsonTable)
+
+  for title, config in pairs(trees) do
+    trees[title] = BehaviourTree:new({ tree = config })
+  end
+
+  return trees
 end
 
 return BehaviourTree

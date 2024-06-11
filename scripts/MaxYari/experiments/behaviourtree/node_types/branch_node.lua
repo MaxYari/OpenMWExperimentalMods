@@ -1,6 +1,5 @@
 local _PACKAGE   = (...):match("^(.+)[%./][^%./]+"):gsub("[%./]?node_types", "")
 local class      = require(_PACKAGE .. '/middleclass')
-local Registry   = require(_PACKAGE .. '/registry')
 local Node       = require(_PACKAGE .. '/node_types/node')
 local BranchNode = class('BranchNode', Node)
 
@@ -19,7 +18,7 @@ end
 
 function BranchNode:_run(object)
   if not self.nodeRunning then
-    self.childNode = Registry.getNode(self.childNodes[self.actualTask])
+    self.childNode = self.childNodes[self.actualTask]
     self.childNode:start(object)
     self.childNode:setParentNode(self)
   end
@@ -41,6 +40,14 @@ function BranchNode:fail()
   self.nodeRunning = false
   self.childNode:finish(self.stateObject);
   self.childNode = nil
+end
+
+function BranchNode:finish()
+  if self.nodeRunning then
+    self.nodeRunning = false
+    self.childNode:finish(self.stateObject);
+    self.childNode = nil
+  end
 end
 
 return BranchNode

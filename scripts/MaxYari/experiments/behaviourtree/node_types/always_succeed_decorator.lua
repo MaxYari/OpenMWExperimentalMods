@@ -8,6 +8,7 @@ function AlwaysSucceedDecorator:success()
 end
 
 function AlwaysSucceedDecorator:fail()
+  print("Their failure is our success!")
   self.parentNode:success()
 end
 

@@ -1,4 +1,4 @@
-local self = require('openmw.self')
+local omwself = require('openmw.self')
 local core = require('openmw.core')
 local types = require('openmw.types')
 local AI = require('openmw.interfaces').AI
@@ -7,14 +7,18 @@ local view = require('openmw_aux.util').deepToString
 local util = require('openmw.util')
 local I = require('openmw.interfaces')
 local anim = require('openmw.animation')
+local nearby = require('openmw.nearby')
+
+
 
 local BT = require('behaviourtree/behaviour_tree')
 local json = require("json")
 
 
 -- For testing
-print("Trying to use improved AI on  " .. self.object.recordId)
-if self.object.recordId ~= "hlaalu guard_outside" then return end
+print("Trying to use improved AI on  " .. omwself.object.recordId)
+if omwself.object.recordId ~= "heddvild" then return end
+
 print("Improved AI is ON")
 
 
@@ -33,6 +37,7 @@ local state = {
       self.movement = 0
       self.sideMovement = 0
       self.targetDistance = 1e42
+      self.range = 1e42
       self.targetMovement = 0
       self.targetSideMovement = 0
    end
@@ -43,71 +48,267 @@ local state = {
 
 -- Utility functions ------------------
 ---------------------------------------
-local function strToBool(str)
-   if str == "true" then
-      return true
-   else
-      return false
+
+
+local function findField(dictionary, value)
+   for field, val in pairs(dictionary) do
+      if val == value then
+         return field
+      end
+   end
+   return nil
+end
+
+local function cache(fn, delay)
+   delay = delay or 0.25 -- default delay is 0.25 seconds
+   local lastExecution = 0
+   local c1, c2 = nil, nil
+
+   return function(...)
+      local currentTime = core.getRealTime()
+      if currentTime - lastExecution < delay then
+         return c1, c2, "cached"
+      end
+
+      lastExecution = currentTime
+      c1, c2 = fn(...)
+      return c1, c2, "new"
    end
 end
 
-local function strIsBool(str)
-   return str == "true" or str == "false"
+local function lookDirection(actor)
+   return actor.rotation:apply(util.vector3(0, 1, 0))
 end
+
+local function flatAngleBetween(a, b)
+   return math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y)
+end
+
+local function calculateMovement(actor, targetPos, speed)
+   local lookDir = lookDirection(actor)
+   local moveDir = targetPos - actor.position
+   local angle = flatAngleBetween(lookDir, moveDir)
+
+   local forwardVec = util.vector2(1, 0)
+   local movementVec = forwardVec:rotate(-angle):normalize() * speed;
+
+   return movementVec.x, movementVec.y
+end
+
+-- Function to check if path point was reached
+
+
+
+
+
+-- navigation service
+local function NavigationService(config)
+   if not config then config = {} end
+
+   local NavData = {
+      path = nil,
+      pathStatus = nil,
+      targetPos = nil,
+      pathPointIndex = 1,
+      nextPathPoint = nil
+   }
+
+   function NavData:getPathStatusVerbose()
+      if self.pathStatus == nil then return nil end
+      return findField(nearby.FIND_PATH_STATUS, self.pathStatus)
+   end
+
+   function NavData:isPathCompleted()
+      return self.path and self.pathPointIndex > #self.path
+   end
+
+   function NavData:calculatePathLength()
+      if not self.path then return 0 end
+
+      local pathLength = 0
+      for i = 1, #self.path - 1 do
+         -- Calculate the distance between consecutive points
+         local segmentLength = (self.path[i + 1] - self.path[i]):length()
+         pathLength = pathLength + segmentLength
+      end
+      return pathLength
+   end
+
+   local function findPath()
+      NavData.pathStatus, NavData.path = nearby.findPath(omwself.object.position, NavData.targetPos, {
+         agentBounds = types.Actor.getPathfindingAgentBounds(omwself),
+      })
+      NavData.pathPointIndex = 1
+      return NavData.pathStatus, NavData.path
+   end
+
+   local findPathCached = cache(findPath, config.cacheDuration)
+
+   function NavData:setTargetPos(pos)
+      if not self.targetPos or (self.targetPos - pos):length() > config.targetPosDeadzone then
+         self.targetPos = pos
+         findPath()
+      end
+   end
+
+   local function positionReached(pos1, pos2)
+      return (pos1 - pos2):length() <= config.pathingDeadzone
+   end
+
+   function NavData:run()
+      -- Fetching a new path if necessary
+      if NavData.targetPos then
+         local pathStatus, path, cacheStatus = findPathCached()
+      end
+
+      -- Updating path progress
+      if NavData.path and NavData.pathPointIndex <= #NavData.path then
+         -- Check if the actor reached the current target point
+         while NavData.pathPointIndex <= #NavData.path do
+            if positionReached(omwself.object.position, NavData.path[NavData.pathPointIndex]) then
+               NavData.pathPointIndex = NavData.pathPointIndex + 1
+            else
+               break;
+            end
+         end
+         if NavData.pathPointIndex <= #NavData.path then
+            NavData.nextPathPoint = NavData.path[NavData.pathPointIndex]
+         else
+            NavData.nextPathPoint = nil
+            -- Reached path end
+         end
+      end
+   end
+
+   return NavData
+end
+
+local navService = NavigationService({
+   cacheDuration = 0.5,
+   targetPosDeadzone = 70,
+   pathingDeadzone = 35
+})
 
 
 
 -- Custom behaviours ------------------
 ---------------------------------------
-function MoveAction(config)
+
+
+function WalkToTarget(config)
    local props = config.properties
 
-   config.start = function(t, state)
-      --print(t.rname .. "started " .. " in " .. direction .. " direction")
-   end
-
    config.run = function(task, state)
-      if props.movement ~= nil then state.movement = props.movement end
-      if props.sideMovement ~= nil then state.sideMovement = props.sideMovement end
-      task:running()
-      --task:fail()
-      --task:running()
-   end
+      if not state.targetActor then
+         return task:fail()
+      end
 
-   config.finish = function(t, state)
-      print(t.rname .. " finished")
+      navService:setTargetPos(state.targetActor.position)
+
+      if (state.targetActor.position - omwself.object.position):length() <= props.proximity then
+         return task:success()
+      end
+
+      if navService.nextPathPoint then
+         state.movement, state.sideMovement = calculateMovement(omwself.object,
+            navService.nextPathPoint, 1)
+      end
+
+      return task:running()
    end
 
    return BT.Task:new(config)
 end
 
-BT.register('MoveAction', MoveAction)
+BT.register('WalkToTarget', WalkToTarget)
 
-function Approach()
-   return MoveAction({ props = { movement = 1 } })
+function MoveInDirection(config)
+   -- Directions are relative to the direction from actor to its target, i.e closer to target, further, strafe around to the right and to the left.
+   local props = config.properties
+
+   config.start = function(self, state)
+      self.startPos = omwself.object.position
+      self.firstRun = true
+   end
+
+   config.run = function(self, state)
+      if not state.targetActor then
+         return self:fail()
+      end
+      --local lookDir = lookDirection(omwself.object)
+      local lookDir = (state.targetActor.position - omwself.object.position):normalize() -- due to the slow pathing refresh this doesnt result in strafing around, but rather in noticeable step to the side. Would be better with shorter strafes, or with different math (finding line to connect to another point around the circle) or with manual moving around.
+      local lookDir2D = util.vector2(lookDir.x, lookDir.y)
+      local directionMult = 0
+      if props.direction == "left" then directionMult = 1 end
+      if props.direction == "right" then directionMult = -1 end
+      if props.direction == "back" then directionMult = 2 end
+      local strafeDir2D = lookDir2D:rotate(directionMult * math.pi / 2):normalize()
+      local strafeVec2D = strafeDir2D * props.distance * 2
+      local strafeToPos = omwself.object.position + util.vector3(strafeVec2D.x, strafeVec2D.y, 0)
+
+      navService:setTargetPos(strafeToPos)
+
+      if navService:getPathStatusVerbose() ~= "Success" then
+         print("STRAFE PATHING ERROR: " .. navService:getPathStatusVerbose())
+         return self:fail()
+      end
+
+      --print("path length: ", navService:calculatePathLength(), " strafe vec: ", tostring(strafeVec2D))
+
+      if self.firstRun == true then
+         if navService:calculatePathLength() < props.distance * 0.9 then
+            return self:fail()
+         end
+         if #navService.path > 2 then
+            return self:fail()
+         end
+      end
+
+      if #navService.path > 2 then
+         return self:success()
+      end
+
+      -- Might get stuck running against an actor! Should probably detect that based on a movement threshold and abort
+      -- even better - calculate time based on speed?
+      if navService:isPathCompleted() then
+         print("Path completed")
+         return self:success()
+      end
+
+
+      if (self.startPos - omwself.object.position):length() > props.distance then
+         return self:success()
+      end
+
+      if navService.nextPathPoint then
+         state.movement, state.sideMovement = calculateMovement(omwself.object,
+            navService.nextPathPoint, 0.5)
+      end
+
+      self.firstRun = false
+      return self:running()
+   end
+
+   return BT.Task:new(config)
 end
 
-BT.register('Approach', Approach)
+BT.register('MoveInDirection', MoveInDirection)
 
-function Fallback()
-   return MoveAction({ props = { movement = -1 } })
+function Fallback(config)
+   config.properties = { movement = -1 }
+   return MoveAction(config)
 end
 
 BT.register('Fallback', Fallback)
 
-function Strafe(config)
-   local props = config.properties
-   props.sideMovement = props.direction
-   return MoveAction(config)
-end
 
-BT.register('Strafe', Strafe)
+
 
 function SwitchRun(config)
    local props = config.properties
 
    config.run = function(task, state)
-      state.run = strToBool(props.state)
+      state.run = props.state
       task:success()
       --task:fail()
       --task:running()
@@ -173,9 +374,9 @@ BT.register('ReleaseAttack', ReleaseAttack)
 
 -- Parsing JSON behaviourtree -----
 ----------------------------------
-local function readJSON(path)
+local function readJSON(path) --For some reason this parser makes json lists into dictionaries with number fields. Its a strange behaviour that might not match how a regular json parser behaves.
    local myTable = {}
-   local file = vfs.open("scripts\\MaxYari\\experiments\\MovementTree.json")
+   local file = vfs.open(path)
 
    if file then
       -- read all contents of file into a string
@@ -186,53 +387,11 @@ local function readJSON(path)
    end
 end
 
-local treeData = readJSON("MovementTree.json")
+local projectJsonTable = readJSON("scripts\\MaxYari\\experiments\\NewTestProject.json")
+local bTrees = BT.LoadFromJsonTable(projectJsonTable)
 
-local function parseNode(node)
-   local initData = {}
-   initData.properties = node.properties
-   initData.rname = node.title
-
-   if node.child then
-      initData.childNode = parseNode(treeData.nodes[node.child])
-   end
-   if node.children then
-      initData.childNodes = {}
-      for i, childId in pairs(node.children) do
-         table.insert(initData.childNodes, parseNode(treeData.nodes[childId]))
-      end
-   end
-
-   local fn = BT.NodeTypeRegistry.get(node.name)
-   if not fn then
-      return error("Can not find behaviour function " .. node.name)
-   end
-
-   for field, value in pairs(node.properties) do
-      if strIsBool(value) then
-         node.properties[field] = strToBool(value)
-      end
-   end
-
-   if type(fn) == "table" then
-      return fn:new(initData)
-   elseif type(fn) == "function" then
-      return fn(initData)
-   end
-end
-
-local function parseTreeData(td)
-   local rootNode = parseNode(td.nodes[td.root])
-   print(view(rootNode, 420))
-
-   return BT:new({
-      tree = rootNode
-   })
-end
-
-local btree = parseTreeData(treeData)
-btree:setStateObject(state)
-
+-- Provide a state oject for tree to use
+bTrees["Combat"]:setStateObject(state)
 
 
 -- Main update function (finally) --
@@ -243,11 +402,25 @@ local function onUpdate(dt)
 
    -- Fill the state
    -- Distance to target
-   local target = AI.getActiveTarget("Combat")
-   if target then
-      state.targetDistance = (target.position - self.object.position):length()
-      --print(state.targetDistance)
+
+   local activeAiPackage = AI.getActivePackage()
+   if activeAiPackage then
+      if activeAiPackage.type == "Combat" then
+         omwself:enableAI(false)
+      end
+   else
+      omwself:enableAI(true)
+      print("No AI package :()")
    end
+
+   local targetActor = AI.getActiveTarget("Combat")
+
+   if targetActor then
+      state.targetActor = targetActor
+      state.range = (targetActor.position - omwself.object.position):length();
+   end
+
+
    -- Is attack animation group still playing, should make the whole attack animation detection fairly robust
    -- can use for that animation.getActiveGroup(actor, bonegroup) - it will return anim playing on a specific group of bones
    -- if not checkanim then
@@ -257,17 +430,21 @@ local function onUpdate(dt)
    -- end
 
    -- This thing crashes!
-   -- anim.getActiveGroup(self.object, 4)
+   anim.getActiveGroup(omwself.object, 4)
 
-   -- Run the behaviour tree!
-   btree:run()
+   -- Run the combat behaviour tree!
+   bTrees["Combat"]:run()
+   navService:run()
 
-   self.controls.run = state.run
-   self.controls.movement = state.movement
-   self.controls.sideMovement = state.sideMovement
+   -- as soon as atleast some control is used - npc stops dead in its tracks
+   omwself.controls.run = false
+   --if state.movement ~= nil then omwself.controls.movement = state.movement end
+   omwself.controls.movement = state.movement
+   omwself.controls.sideMovement = state.sideMovement
    -- attack will never happen if this is set to 1 on the very first update, probably a bug
-   self.controls.use = state.attack
-   self.controls.jump = state.jump
+   -- omwself.controls.use = state.attack
+   --omwself.controls.jump = state.jump
+   omwself.controls.yawChange = 0
 end
 
 

@@ -4,11 +4,7 @@ local Decorator           = require(_PACKAGE .. '/node_types/decorator')
 local AlwaysFailDecorator = class('AlwaysFailDecorator', Decorator)
 
 function AlwaysFailDecorator:success()
-  self.parentNode:fail()
-end
-
-function AlwaysFailDecorator:fail()
-  self.parentNode:fail()
+  self:fail()
 end
 
 return AlwaysFailDecorator

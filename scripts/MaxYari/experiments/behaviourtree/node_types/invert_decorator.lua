@@ -4,11 +4,11 @@ local Decorator       = require(_PACKAGE .. '/node_types/decorator')
 local InvertDecorator = class('InvertDecorator', Decorator)
 
 function InvertDecorator:success()
-  self.parentNode:fail()
+  Decorator.fail(self)
 end
 
 function InvertDecorator:fail()
-  self.parentNode:success()
+  Decorator.success(self)
 end
 
 return InvertDecorator

@@ -16,7 +16,7 @@ end
 function NodeTypeRegistry.register(name, node)
   validateNodeValue(name, node)
   if registeredNodes[name] ~= nil then
-    error(name .. "node type already rigestered. Please use different name/registry id.", 2)
+    error(name .. " Node type already rigestered. Please use different name/registry id.", 2)
   else
     registeredNodes[name] = node;
   end
@@ -37,7 +37,7 @@ function NodeTypeRegistry.get(name)
   else
     return error(
       name ..
-      "Node type doesn't exist in the registry, make sure that you've registered a node of that type before attempting to load the behaviour tree file.",
+      " Node type doesn't exist in the registry, make sure that you've registered a node of that type before attempting to load the behaviour tree file.",
       2)
   end
 end

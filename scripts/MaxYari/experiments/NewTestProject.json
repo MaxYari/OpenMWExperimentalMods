@@ -1,0 +1,280 @@
+{
+  "version": "0.4.0",
+  "scope": "project",
+  "selectedTree": "8feca3b4-1758-4072-8c06-c33bb3a51236",
+  "trees": [
+    {
+      "version": "0.4.0",
+      "scope": "tree",
+      "id": "8feca3b4-1758-4072-8c06-c33bb3a51236",
+      "title": "Combat",
+      "description": "Every tree should start with this node.",
+      "root": "cb9f9999-f173-47c3-9944-b4b78df293af",
+      "properties": {},
+      "nodes": {
+        "cb9f9999-f173-47c3-9944-b4b78df293af": {
+          "id": "cb9f9999-f173-47c3-9944-b4b78df293af",
+          "name": "Sequence",
+          "title": "Sequence",
+          "description": "Runs every child tasks one after another, until one fails or all of them succeed",
+          "properties": {},
+          "display": {
+            "x": 0,
+            "y": 216
+          },
+          "children": [
+            "e04051a4-c38f-473c-8224-b8528d2cb62e",
+            "bec259d2-6904-4385-b97f-86c8ddf57219",
+            "f09d4d57-cf32-4e14-95dd-0ec163feb244"
+          ]
+        },
+        "f09d4d57-cf32-4e14-95dd-0ec163feb244": {
+          "id": "f09d4d57-cf32-4e14-95dd-0ec163feb244",
+          "name": "Wait",
+          "title": "Wait <milliseconds>ms",
+          "description": "Wait for the specified duration ('milliseconds' parameter).",
+          "properties": {
+            "milliseconds": 1000
+          },
+          "display": {
+            "x": 228,
+            "y": 324
+          }
+        },
+        "bea4231a-18ef-4cc4-838d-f252a9222229": {
+          "id": "bea4231a-18ef-4cc4-838d-f252a9222229",
+          "name": "MoveInDirection",
+          "title": "Move In Direction",
+          "description": "",
+          "properties": {
+            "distance": 70,
+            "direction": "forward"
+          },
+          "display": {
+            "x": -300,
+            "y": 552
+          }
+        },
+        "6d9c74a6-85d2-4bf6-a798-7c8514b7e1df": {
+          "id": "6d9c74a6-85d2-4bf6-a798-7c8514b7e1df",
+          "name": "Random",
+          "title": "Run Random",
+          "description": "Randomly picks one of child tasks and runs it.",
+          "properties": {},
+          "display": {
+            "x": 0,
+            "y": 444
+          },
+          "children": [
+            "bea4231a-18ef-4cc4-838d-f252a9222229",
+            "c2b0e797-9941-4528-91a3-34e1224fee79",
+            "ff60df19-5981-46a1-8905-800f1f9a6e25",
+            "6680cb4e-1472-4e64-8421-90ac10802f9e"
+          ]
+        },
+        "c2b0e797-9941-4528-91a3-34e1224fee79": {
+          "id": "c2b0e797-9941-4528-91a3-34e1224fee79",
+          "name": "MoveInDirection",
+          "title": "Move In Direction",
+          "description": "",
+          "properties": {
+            "distance": 25,
+            "direction": "left"
+          },
+          "display": {
+            "x": -96,
+            "y": 552
+          }
+        },
+        "ff60df19-5981-46a1-8905-800f1f9a6e25": {
+          "id": "ff60df19-5981-46a1-8905-800f1f9a6e25",
+          "name": "MoveInDirection",
+          "title": "Move In Direction",
+          "description": "",
+          "properties": {
+            "distance": 25,
+            "direction": "right"
+          },
+          "display": {
+            "x": 108,
+            "y": 552
+          }
+        },
+        "6680cb4e-1472-4e64-8421-90ac10802f9e": {
+          "id": "6680cb4e-1472-4e64-8421-90ac10802f9e",
+          "name": "MoveInDirection",
+          "title": "Move In Direction",
+          "description": "",
+          "properties": {
+            "distance": 70,
+            "direction": "back"
+          },
+          "display": {
+            "x": 300,
+            "y": 552
+          }
+        },
+        "bec259d2-6904-4385-b97f-86c8ddf57219": {
+          "id": "bec259d2-6904-4385-b97f-86c8ddf57219",
+          "name": "RepeatUntilSuccess",
+          "title": "Repeat Until Success",
+          "description": "Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop after the first child task success.",
+          "properties": {
+            "maxLoop": -1
+          },
+          "display": {
+            "x": 0,
+            "y": 324
+          },
+          "child": "6d9c74a6-85d2-4bf6-a798-7c8514b7e1df"
+        },
+        "e04051a4-c38f-473c-8224-b8528d2cb62e": {
+          "id": "e04051a4-c38f-473c-8224-b8528d2cb62e",
+          "name": "StateInterrupt",
+          "title": "State Interrupt",
+          "description": "Interrupts a neighbouring branch condition is true. Won't interrupt again until finished.",
+          "properties": {
+            "condition": "$range > 300"
+          },
+          "display": {
+            "x": -456,
+            "y": 300
+          },
+          "child": "6c6e2d1d-7596-4ce5-878c-5ce6a7707b0b"
+        },
+        "19a27023-3845-4ec0-931d-cd5d2db42a3d": {
+          "id": "19a27023-3845-4ec0-931d-cd5d2db42a3d",
+          "name": "ContinuousStateCondition",
+          "title": "Cont. State Condition",
+          "description": "Continuous condition node runs a child node only if condition is met. Condition field can refer to a state values using '$' sign, example: 'condition: $range < 100'. Condition is checked every frame, it will abort if condition outcome is changed while the child is still running.",
+          "properties": {
+            "condition": "$range > 300"
+          },
+          "display": {
+            "x": -660,
+            "y": 660
+          },
+          "child": "80f16970-bc1e-4c9d-8136-1f3f990059ff"
+        },
+        "6c6e2d1d-7596-4ce5-878c-5ce6a7707b0b": {
+          "id": "6c6e2d1d-7596-4ce5-878c-5ce6a7707b0b",
+          "name": "Sequence",
+          "title": "Sequence",
+          "description": "Runs every child tasks one after another, until one fails or all of them succeed",
+          "properties": {},
+          "display": {
+            "x": -456,
+            "y": 432
+          },
+          "children": [
+            "c3a3d3ae-dd32-453d-b697-cd2509dc218f",
+            "83707225-87f0-45d0-87b7-dde865964730"
+          ]
+        },
+        "80f16970-bc1e-4c9d-8136-1f3f990059ff": {
+          "id": "80f16970-bc1e-4c9d-8136-1f3f990059ff",
+          "name": "MoveToTarget",
+          "title": "Move to Target",
+          "description": "",
+          "properties": {
+            "proximity": 70
+          },
+          "display": {
+            "x": -660,
+            "y": 792
+          }
+        },
+        "83707225-87f0-45d0-87b7-dde865964730": {
+          "id": "83707225-87f0-45d0-87b7-dde865964730",
+          "name": "Runner",
+          "title": "Runner",
+          "description": "This task will run indefinitely. Can be stopped by some parent decorators, e.g Continuous Condition.",
+          "properties": {},
+          "display": {
+            "x": -456,
+            "y": 612
+          }
+        },
+        "c3a3d3ae-dd32-453d-b697-cd2509dc218f": {
+          "id": "c3a3d3ae-dd32-453d-b697-cd2509dc218f",
+          "name": "AlwaysSucceed",
+          "title": "Always Succeed",
+          "description": "When a child task finishes - will return success, no matter what value child task returned.",
+          "properties": {},
+          "display": {
+            "x": -660,
+            "y": 516
+          },
+          "child": "19a27023-3845-4ec0-931d-cd5d2db42a3d"
+        }
+      },
+      "display": {
+        "camera_x": 872.5,
+        "camera_y": 18.5,
+        "camera_z": 0.7499999999999998,
+        "x": 0,
+        "y": 72
+      }
+    },
+    {
+      "version": "0.4.0",
+      "scope": "tree",
+      "id": "4460d8c0-5105-4c71-953c-65b44ce0c61a",
+      "title": "Locomotion",
+      "description": "Every tree should start with this node.",
+      "root": "2040481a-e580-41ad-9c15-b3b775bc908c",
+      "properties": {},
+      "nodes": {
+        "2040481a-e580-41ad-9c15-b3b775bc908c": {
+          "id": "2040481a-e580-41ad-9c15-b3b775bc908c",
+          "name": "Succeeder",
+          "title": "Succeeder",
+          "description": "This task will always succeed.",
+          "properties": {},
+          "display": {
+            "x": 24,
+            "y": -60
+          }
+        }
+      },
+      "display": {
+        "camera_x": 492.5,
+        "camera_y": 371,
+        "camera_z": 1,
+        "x": 24,
+        "y": -192
+      }
+    }
+  ],
+  "custom_nodes": [
+    {
+      "version": "0.4.0",
+      "scope": "node",
+      "name": "MoveInDirection",
+      "icon": {
+        "className": "fas fa-walking"
+      },
+      "category": "action",
+      "title": "Move In Direction",
+      "description": null,
+      "properties": {
+        "distance": 70,
+        "direction": "forward"
+      }
+    },
+    {
+      "version": "0.4.0",
+      "scope": "node",
+      "name": "MoveToTarget",
+      "icon": {
+        "className": "fas fa-running"
+      },
+      "category": "action",
+      "title": "Move to Target",
+      "description": null,
+      "properties": {
+        "proximity": 70
+      }
+    }
+  ]
+}

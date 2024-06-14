@@ -4,29 +4,46 @@ local Node      = require(_PACKAGE .. '/node_types/node')
 local Decorator = class('Decorator', Node)
 
 function Decorator:initialize(config)
-  if config.run ~= nil or config.start ~= nil or config.finish ~= nil then
-    error(
-      "It seems that you are attempting to implement a custom decorator by providing a run/start/finish function to decorator's instance. This is supported only for Tasks. New decorators should be implemented by implementing a new decorator class. See different decorator classes implemented in this library for an example.",
-      2)
+  if config.childNode then
+    self.childNode = config.childNode
   end
   Node.initialize(self, config)
 end
 
-function Decorator:setChildNode(node)
-  self.childNode = node
+function Decorator:start()
+  Node.start(self)
+
+  --Its possible that .start resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
+  --already done, since finished flag is set after that
+  if self.finished then return end
+
+  --Register all interrupts
+  if self.childNode.isInterrupt then
+    self.tree:registerInterrupt(self.childNode)
+  end
+
+  --The only child is an interrupt (or another node) that doesnt want to be called directly, so can't do much of anything here but fail
+  if self.childNode.branchIgnore then
+    return self:fail()
+  end
+
+  self.childNode:start()
 end
 
-function Decorator:start(object)
-  self.childNode:start(object)
+function Decorator:abort()
+  self.childNode:abort()
+  Node.abort(self)
 end
 
-function Decorator:finish(object)
-  self.childNode:finish(object)
+function Decorator:run()
+  Node.run(self)
+  self.childNode:run()
 end
 
-function Decorator:run(object)
-  self.childNode:setParentNode(self)
-  self.childNode:call_run(object)
+function Decorator:finish()
+  -- Deregister interrupts on the level below
+  self.tree:deregisterInterrupts(self.level + 1)
+  Node.finish(self)
 end
 
 return Decorator

@@ -21,6 +21,8 @@ if omwself.object.recordId ~= "heddvild" then return end
 
 print("Improved AI is ON")
 
+BT.setDebugLevel(1)
+
 
 -- Behaviour state of this actor --
 -----------------------------------
@@ -195,7 +197,7 @@ local navService = NavigationService({
 ---------------------------------------
 
 
-function WalkToTarget(config)
+function MoveToTarget(config)
    local props = config.properties
 
    config.run = function(task, state)
@@ -220,7 +222,9 @@ function WalkToTarget(config)
    return BT.Task:new(config)
 end
 
-BT.register('WalkToTarget', WalkToTarget)
+BT.register('MoveToTarget', MoveToTarget)
+
+
 
 function MoveInDirection(config)
    -- Directions are relative to the direction from actor to its target, i.e closer to target, further, strafe around to the right and to the left.
@@ -271,7 +275,6 @@ function MoveInDirection(config)
       -- Might get stuck running against an actor! Should probably detect that based on a movement threshold and abort
       -- even better - calculate time based on speed?
       if navService:isPathCompleted() then
-         print("Path completed")
          return self:success()
       end
 
@@ -392,6 +395,7 @@ local bTrees = BT.LoadFromJsonTable(projectJsonTable)
 
 -- Provide a state oject for tree to use
 bTrees["Combat"]:setStateObject(state)
+bTrees["Locomotion"]:setStateObject(state)
 
 
 -- Main update function (finally) --
@@ -430,7 +434,14 @@ local function onUpdate(dt)
    -- end
 
    -- This thing crashes!
-   anim.getActiveGroup(omwself.object, 4)
+   --anim.getActiveGroup(omwself.object, 4)
+
+   -- anim group time
+   --print("anim group time: " .. tostring(anim.getCurrentTime(omwself.object, "weapontwohand")))
+   --print("attack state: " .. tostring(state.attackState))
+   -- if time is not progressing - attack is probably being held
+   -- if the group is not playing - probably was interrupted. I believe those attack groups gladly contain ONLY attacks, all other animations, like idle and stagger for the same weapon belong to a group with a different name
+
 
    -- Run the combat behaviour tree!
    bTrees["Combat"]:run()
@@ -442,7 +453,8 @@ local function onUpdate(dt)
    omwself.controls.movement = state.movement
    omwself.controls.sideMovement = state.sideMovement
    -- attack will never happen if this is set to 1 on the very first update, probably a bug
-   -- omwself.controls.use = state.attack
+   omwself.controls.use = 0
+   if (core.getRealTime() % 2) > 1 then omwself.controls.use = 1 end
    --omwself.controls.jump = state.jump
    omwself.controls.yawChange = 0
 end
@@ -452,35 +464,45 @@ end
 ------------------------------
 -- Notes: Theres no way do check what animation group is currently playing on a specific bonegroup?
 -- In the text key handler: Theres no way to know for which bonegroup the text key was triggered?
--- I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
---    print("Animation text key! " .. groupname .. " : " .. key)
+I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
+   --print("Animation text key! " .. groupname .. " : " .. key)
+   --print("Position of the key: " .. tostring(anim.getTextKeyTime(omwself.object, key)))
 
---    -- Note: attack animation can be interrupted, so this states most likely should reset after few seconds just in case, to ponder: what if character holds the attack long enough for this to reset?
---    -- Probably need to check animation timings to figure for sure if we are in the attack group or not, can get the group during windup and then repeatedly check if its still playing, reset if not
---    if string.find(key, "chop") or string.find(key, "thrust") or string.find(key, "slash") then
---       state.attackState = "windup"
---       print("Animation attack group is ", groupname)
---       state.attackGroup = groupname
---    end
+   -- Note: attack animation can be interrupted, so this states most likely should reset after few seconds just in case, to ponder: what if character holds the attack long enough for this to reset?
+   -- Probably need to check animation timings to figure for sure if we are in the attack group or not, can get the group during windup and then repeatedly check if its still playing, reset if not
+   if string.find(key, "chop") or string.find(key, "thrust") or string.find(key, "slash") then
+      state.attackState = "windup_start"
+      state.attackGroup = groupname
+   end
 
---    if string.find(key, "min attack") then
---       state.attackState = "min windup"
---    end
+   if string.find(key, "min attack") then
+      state.attackState = "windup_min"
+   end
 
---    if string.find(key, "max attack") then
---       -- not correct, this will be reported both in the end of windup and beginning of attack
---       state.attackState = "max windup"
---    end
+   if string.find(key, "max attack") then
+      -- Attack is being held here, but this event will also trigger at the beginning of release
+      state.attackState = "windup_max"
+      --print("Attack hold key time: " .. tostring(anim.getTextKeyTime(omwself.object, key)))
+   end
 
---    if string.find(key, "follow start") then
---       state.attackState = "swing"
---       --I.AnimationController.playBlendedAnimation('idle', { priority = anim.PRIORITY.Weapon })
---    end
+   if string.find(key, "min hit") then
+      --Changing state on min hit is good enough
+      state.attackState = "release_start"
+   elseif string.find(key, "hit") then
+      state.attackState = "release_hit"
+   end
 
---    if string.find(key, "follow stop") then
---       state.attackState = "none"
---    end
--- end)
+
+
+   if string.find(key, "follow start") then
+      state.attackState = "follow_start"
+      --I.AnimationController.playBlendedAnimation('idle', { priority = anim.PRIORITY.Weapon })
+   end
+
+   if string.find(key, "follow stop") then
+      state.attackState = nil
+   end
+end)
 
 -- Engine handlers -----------
 ------------------------------

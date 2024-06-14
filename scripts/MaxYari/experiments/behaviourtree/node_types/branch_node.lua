@@ -3,51 +3,65 @@ local class      = require(_PACKAGE .. '/middleclass')
 local Node       = require(_PACKAGE .. '/node_types/node')
 local BranchNode = class('BranchNode', Node)
 
-function BranchNode:start(object)
-  if not self.nodeRunning then
-    self:setStateObject(object)
-    self.actualTask = 1
+-- Seems to be bugged, needs a rewrite, seem to start nodes multiple times
+
+function BranchNode:initialize(config)
+  Node.initialize(self, config)
+
+  if config.childNodes then
+    self.childNodes = config.childNodes
+    self.usableChildNodes = {}
+    self.ignoredChildNodes = {}
+    for i, node in pairs(self.childNodes) do
+      node.indexInParent = i
+      if node.branchIgnore then
+        table.insert(self.ignoredChildNodes, node)
+      else
+        table.insert(self.usableChildNodes, node)
+      end
+    end
   end
 end
 
-function BranchNode:run(object)
-  if self.actualTask <= #self.childNodes then
-    self:_run(object)
+function BranchNode:start()
+  Node.start(self)
+
+  --Its possible that .start resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
+  --already done, since finished flag is set after that
+  if self.finished then return end
+
+  --Register all interrupts
+  for i, node in pairs(self.childNodes) do
+    if node.isInterrupt then
+      self.tree:registerInterrupt(node)
+    end
   end
 end
 
-function BranchNode:_run(object)
-  if not self.nodeRunning then
-    self.childNode = self.childNodes[self.actualTask]
-    self.childNode:start(object)
-    self.childNode:setParentNode(self)
+function BranchNode:run()
+  Node.run(self)
+
+  if self.childNode then
+    self.childNode:run()
   end
-  self.childNode:run(object)
 end
 
-function BranchNode:running()
-  self.nodeRunning = true
-  self.parentNode:running()
+function BranchNode:childSwitch(node)
+  -- Usually called by a child interrupt to notify the branch node that the interrupt node is a currently active child
+  self.childIndex = node.indexInParent
+  self.childNode = node
 end
 
-function BranchNode:success()
-  self.nodeRunning = false
-  self.childNode:finish(self.stateObject)
-  self.childNode = nil
-end
-
-function BranchNode:fail()
-  self.nodeRunning = false
-  self.childNode:finish(self.stateObject);
-  self.childNode = nil
+function BranchNode:abort()
+  if self.childNode then self.childNode:abort() end
+  Node.abort(self)
 end
 
 function BranchNode:finish()
-  if self.nodeRunning then
-    self.nodeRunning = false
-    self.childNode:finish(self.stateObject);
-    self.childNode = nil
-  end
+  -- Deregister interrupts on the level below
+  self.childNode = nil
+  self.tree:deregisterInterrupts(self.level + 1)
+  Node.finish(self)
 end
 
 return BranchNode

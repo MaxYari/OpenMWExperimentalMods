@@ -1,17 +1,17 @@
-local _PACKAGE                     = (...):match("^(.+)[%./][^%./]+"):gsub("[%./]?nodes", "")
+local _PACKAGE           = (...):match("^(.+)[%./][^%./]+"):gsub("[%./]?nodes", "")
 
-local Task                         = require(_PACKAGE .. '/node_types/node')
-local ConditionDecorator           = require(_PACKAGE .. '/node_types/condition_decorator')
-local ContinuousConditionDecorator = require(_PACKAGE .. '/node_types/continuous_condition_decorator')
-local RepeaterDecorator            = require(_PACKAGE .. '/node_types/repeater_decorator')
-local g                            = _BehaviourTreeGlobals
+local Task               = require(_PACKAGE .. '/node_types/node')
+local Decorator          = require(_PACKAGE .. '/node_types/decorator')
+local RepeaterDecorator  = require(_PACKAGE .. '/node_types/repeater_decorator')
+local InterruptDecorator = require(_PACKAGE .. '/node_types/interrupt_decorator')
+local g                  = _BehaviourTreeGlobals
 
 -- Helper functions --------
 
 -- Wrapper function to dynamically use `load` or `loadCode`
 -- This aproach probably needs to be reviewed again
-local loadCode                     = nil
-local baseLoad                     = _G.load or load or loadstring
+local loadCode           = nil
+local baseLoad           = _G.load or load or loadstring
 if baseLoad then
     loadCode = function(code, scope)
         local func, err = baseLoad(code)
@@ -88,33 +88,72 @@ local function StateCondition(config)
     local p = config.properties
     local conditionFn = nil
 
-    config.condition = function(task, state)
-        if conditionFn == nil then
-            conditionFn = ParseConditionToFn(config, state)
+    config.start = function(self, state)
+        conditionFn = ParseConditionToFn(config, state)
+
+        if not conditionFn() then
+            self:fail()
         end
-        return conditionFn()
     end
 
-    return ConditionDecorator:new(config)
+    return Decorator:new(config)
 end
 
--- Runs a child node only if condition is met. Condition field can refer to state values using '$' sign, example: "condition: $range < 100". Condition is checked every frame, it will abort if condition outcome is changed while the child is still running.
+local function StateInterrupt(config)
+    local p = config.properties
+    local conditionFn = nil
+
+    config.registered = function(self, state)
+        conditionFn = ParseConditionToFn(config, state)
+    end
+
+    config.shouldInterrupt = function(self, state)
+        local resp = not self.started and conditionFn()
+        return resp
+    end
+
+    config.start = function(self, state)
+        self.started = true
+    end
+
+    config.finish = function(self, state)
+        self.started = false
+    end
+
+    return InterruptDecorator:new(config)
+end
+
 local function ContinuousStateCondition(config)
     local p = config.properties
     local conditionFn = nil
 
-    config.condition = function(task, state)
-        if conditionFn == nil then
-            conditionFn = ParseConditionToFn(config, state)
-        end
-        return conditionFn()
+    -- Will not be ignored by branch nodes (Sequence, Priority e.t.c), branch node will be able to trigger it as any other regular node.
+    config.branchIgnore = false
+
+    config.registered = function(self, state)
+        conditionFn = ParseConditionToFn(config, state)
     end
 
-    return ContinuousConditionDecorator:new(config)
+    config.shouldInterrupt = function(self, state)
+        local resp = self.started and not conditionFn() -- Only interrupt itself, and only when condition is false
+        -- If interrupted execution will bounce back to start(), where fail will be reported
+        return resp
+    end
+
+    config.start = function(self, state)
+        if conditionFn() then
+            self.started = true
+        else
+            self:fail()
+        end
+    end
+
+    return InterruptDecorator:new(config)
 end
 
 -- Runs a child until its done or until the time runs out, in the latter case - fails and stops the child. 'milliseconds' property specifies the amount of time.
 local function LimitRuntime(config)
+    -- REWRITE: Needs to use interrupt node instead of decorator now
     local p = config.properties
     local timer = config.clock or clock
 
@@ -123,11 +162,13 @@ local function LimitRuntime(config)
         self.startedAt = timer()
     end
 
-    config.condition = function(self, state)
-        return (timer() - self.startedAt) * 1000 <= self.duration
+    config.run = function(self, state)
+        if (timer() - self.startedAt) * 1000 > self.duration then
+            return self.interruptWithFail()
+        end
     end
 
-    return ContinuousConditionDecorator:new(config)
+    return Decorator:new(config)
 end
 
 -- Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop and report success after the first child task success. Will report failure if all repetitions were done without a single child success.
@@ -150,20 +191,18 @@ local function Cooldown(config)
     config.start = function(self, state)
         g.print(self.name .. "started")
         self.duration = parseRangeDuration(p.milliseconds)
-    end
 
-    config.condition = function(self, state)
         local now = timer() * 1000
 
         if not state.lastUseTime or now - state.lastUseTime > self.duration then
             state.lastUseTime = now
-            return true
+            return self:success()
+        else
+            return self:fail()
         end
-
-        return false
     end
 
-    return ContinuousConditionDecorator:new(config)
+    return Decorator:new(config)
 end
 
 -- This task always succeeds
@@ -187,7 +226,8 @@ function RandomOutcome(config)
 
     -- this probably should be on start, not on run
     config.run = function(task, state)
-        if props.probability > math.random() * 100 then
+        local roll = math.random() * 100
+        if props.probability > roll then
             task:success()
         else
             task:fail()
@@ -211,7 +251,6 @@ local function Wait(config)
     local timer = config.clock or clock
 
     config.start = function(t, state)
-        g.print(t.name .. "started")
         t.duration = parseRangeDuration(p.milliseconds)
         t.startTime = timer() * 1000
     end
@@ -230,6 +269,7 @@ end
 
 local function registerPremadeNodes(reg)
     reg.register("StateCondition", StateCondition)
+    reg.register("StateInterrupt", StateInterrupt)
     reg.register("ContinuousStateCondition", ContinuousStateCondition)
     reg.register("LimitRuntime", LimitRuntime)
     reg.register('RepeatUntilFailure', RepeatUntilFailure)

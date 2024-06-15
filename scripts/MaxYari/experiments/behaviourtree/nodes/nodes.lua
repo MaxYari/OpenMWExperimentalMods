@@ -148,38 +148,60 @@ local function ContinuousStateCondition(config)
         end
     end
 
+    config.triggered = function(self, state)
+        self:fail() -- Refuse to execute after interrupt is triggered, otherwise the node will start. But for this one it was already running and we only want to escape.
+    end
+
     return InterruptDecorator:new(config)
 end
 
 -- Runs a child until its done or until the time runs out, in the latter case - fails and stops the child. 'milliseconds' property specifies the amount of time.
 local function LimitRuntime(config)
-    -- REWRITE: Needs to use interrupt node instead of decorator now
     local p = config.properties
     local timer = config.clock or clock
+
+    local duration = 0
+    local wasTriggered = false
+
+    config.branchIgnore = false
 
     config.start = function(self, state)
         self.duration = parseRangeDuration(p.milliseconds)
         self.startedAt = timer()
+        self.started = true
     end
 
-    config.run = function(self, state)
-        if (timer() - self.startedAt) * 1000 > self.duration then
-            return self.interruptWithFail()
+    config.shouldInterrupt = function(self, state)
+        if self.started and ((timer() - self.startedAt) * 1000 > self.duration) then
+            return true
         end
     end
 
-    return Decorator:new(config)
+    -- Upon self-interrupt a following sequence of events will attempt to playout: [Current Task]finish()--[Interrupt]triggered()--[Interrupt]start()--...
+    -- But in the case of this interrupt node - "Current Task" and "Interrupt" are the same node/task, since we are using interrupt to break out of itself.
+    -- Naturally we have no interest in starting again after this task broke out of itself, so to finish breaking out - we can fail() in triggered().
+    -- It is also possible to fail() in start(), but then we will have difficulties distinguishing between a start() after an interrupt and a natural start() due
+    -- to the execution flow reaching the node. In some nodes this distinction will not matter, in this node - it does, hence it's much simpler to break out in triggered().
+    config.triggered = function(self, state)
+        self:fail()
+    end
+
+    return InterruptDecorator:new(config)
 end
 
 -- Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop and report success after the first child task success. Will report failure if all repetitions were done without a single child success.
 local function RepeatUntilSuccess(config)
+    local p = config.properties
     config.untilSuccess = true
+    config.maxLoop = p.maxLoop
     return RepeaterDecorator:new(config)
 end
 
 -- Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop and report success after the first child task failure. Will report failure if all repetitions were done without a single child failure.
 local function RepeatUntilFailure(config)
+    local p = config.properties
     config.untilFailure = true
+    config.maxLoop = p.maxLoop
     return RepeaterDecorator:new(config)
 end
 

@@ -36,7 +36,13 @@ function InterruptDecorator:doInterrupt()
     self.parentNode:childSwitch(self)
   end
 
+  self:registerApiStatusFunctions()
+  self.finished = false
   self.api:triggered(self.tree.stateObject)
+
+  --Its possible that .triggered resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
+  --already done, since finished flag is set after that
+  if self.finished then return end
 
   self:start()
 end

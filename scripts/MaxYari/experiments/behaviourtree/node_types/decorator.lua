@@ -23,7 +23,7 @@ function Decorator:start()
   end
 
   --The only child is an interrupt (or another node) that doesnt want to be called directly, so can't do much of anything here but fail
-  if self.childNode.branchIgnore then
+  if self.childNode.isStealthy then
     return self:fail()
   end
 

@@ -11,6 +11,14 @@ local function flatAngleBetween(a, b)
     return math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y)
 end
 
+local function lookRotation(actor, targetPos)
+    local lookDir = lookDirection(actor)
+    local desiredLookDir = targetPos - actor.position
+    local angle = flatAngleBetween(lookDir, desiredLookDir)
+    return angle
+end
+module.lookRotation = lookRotation
+
 local function calculateMovement(actor, targetPos, speed)
     local lookDir = lookDirection(actor)
     local moveDir = targetPos - actor.position

@@ -6,92 +6,24 @@ local RepeaterDecorator  = require(_PACKAGE .. '/node_types/repeater_decorator')
 local InterruptDecorator = require(_PACKAGE .. '/node_types/interrupt_decorator')
 local g                  = _BehaviourTreeGlobals
 
--- Helper functions --------
 
--- Wrapper function to dynamically use `load` or `loadCode`
--- This aproach probably needs to be reviewed again
-local loadCode           = nil
-local baseLoad           = _G.load or load or loadstring
-if baseLoad then
-    loadCode = function(code, scope)
-        local func, err = baseLoad(code)
-        if func then
-            setfenv(func, scope) -- Set the environment to the provided scope
-            return func
-        else
-            return nil, err
-        end
-    end
-else
-    -- OpenMW compatibility
-    loadCode = require('openmw.util').loadCode
-end
-
--- Finding a time measureing function (should return time in seconds, used for measuring time periods, absolute value not important).
--- With built-in OpenMW compatibility.
-local clock = _G.clock or os.clock or require('openmw.core').getRealTime
--------------------------------------------------------
--------------------------------------------------------
-
--- Helper functions ---------------------------------
-local function ParseConditionToFn(config, state)
-    local err = nil
+local function RandomThrough(config)
     local p = config.properties
-    local cleanValue = string.gsub(p.condition, "%$", "")
-
-    local fn, err = loadCode("return " .. cleanValue, state)
-    if err then
-        print("Can not parse " .. config.name .. " condition: " .. cleanValue)
-    end
-    if fn == nil then
-        fn = function(x) return false end
-    end
-
-    return fn
-end
-
-local function parseRangeDuration(input)
-    -- Written by ChatGPT :)
-    if type(input) == "number" then
-        return input
-    end
-
-    -- Check if input is a string in the format "number, number"
-    if type(input) == "string" then
-        -- Extract the two numbers from the string
-        local num1, num2 = input:match("(%d+),%s*(%d+)")
-        if num1 and num2 then
-            -- Convert extracted strings to numbers
-            num1 = tonumber(num1)
-            num2 = tonumber(num2)
-            if num1 and num2 then
-                -- Ensure num1 is less than num2 for range generation
-                if num1 > num2 then
-                    num1, num2 = num2, num1
-                end
-                -- Generate and return a random number between num1 and num2
-                return math.random(num1, num2)
-            else
-                error("Input string is not in the correct format or contains non-numeric values.")
-            end
-        else
-            error("Input string is not in the correct format.")
-        end
-    end
-
-    error("Unsupported input type. Only numbers and strings are supported.")
-end
-------------------------------------------------------
-
--- Runs a child node only if condition is met. Condition field can refer to state values using '$' sign, example: "condition: $range < 100". Condition is checked only once when this decorator is reached, it will not abort if condition outcome is changed while the child is still running.
-local function StateCondition(config)
-    local p = config.properties
-    local conditionFn = nil
 
     config.start = function(self, state)
-        conditionFn = ParseConditionToFn(config, state)
+        if math.random() * 100 > p.probability() then
+            self:fail()
+        end
+    end
 
-        if not conditionFn() then
+    return Decorator:new(config)
+end
+
+local function StateCondition(config)
+    local p = config.properties
+
+    config.start = function(self, state)
+        if not p.condition() then
             self:fail()
         end
     end
@@ -101,14 +33,9 @@ end
 
 local function StateInterrupt(config)
     local p = config.properties
-    local conditionFn = nil
-
-    config.registered = function(self, state)
-        conditionFn = ParseConditionToFn(config, state)
-    end
 
     config.shouldInterrupt = function(self, state)
-        local resp = not self.started and conditionFn()
+        local resp = not self.started and p.condition()
         return resp
     end
 
@@ -125,23 +52,18 @@ end
 
 local function ContinuousStateCondition(config)
     local p = config.properties
-    local conditionFn = nil
 
     -- Will not be ignored by branch nodes (Sequence, Priority e.t.c), branch node will be able to trigger it as any other regular node.
-    config.branchIgnore = false
-
-    config.registered = function(self, state)
-        conditionFn = ParseConditionToFn(config, state)
-    end
+    config.isStealthy = false
 
     config.shouldInterrupt = function(self, state)
-        local resp = self.started and not conditionFn() -- Only interrupt itself, and only when condition is false
+        local resp = self.started and not p.condition() -- Only interrupt itself, and only when condition is false
         -- If interrupted execution will bounce back to start(), where fail will be reported
         return resp
     end
 
     config.start = function(self, state)
-        if conditionFn() then
+        if p.condition() then
             self.started = true
         else
             self:fail()
@@ -155,24 +77,24 @@ local function ContinuousStateCondition(config)
     return InterruptDecorator:new(config)
 end
 
--- Runs a child until its done or until the time runs out, in the latter case - fails and stops the child. 'milliseconds' property specifies the amount of time.
-local function LimitRuntime(config)
+
+local function LimitRunTime(config)
     local p = config.properties
-    local timer = config.clock or clock
+    local timer = config.clock or g.clock
 
     local duration = 0
     local wasTriggered = false
 
-    config.branchIgnore = false
+    config.isStealthy = false
 
     config.start = function(self, state)
-        self.duration = parseRangeDuration(p.milliseconds)
+        self.duration = p.duration()
         self.startedAt = timer()
         self.started = true
     end
 
     config.shouldInterrupt = function(self, state)
-        if self.started and ((timer() - self.startedAt) * 1000 > self.duration) then
+        if self.started and ((timer() - self.startedAt) > self.duration) then
             return true
         end
     end
@@ -189,45 +111,72 @@ local function LimitRuntime(config)
     return InterruptDecorator:new(config)
 end
 
--- Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop and report success after the first child task success. Will report failure if all repetitions were done without a single child success.
+
 local function RepeatUntilSuccess(config)
     local p = config.properties
     config.untilSuccess = true
-    config.maxLoop = p.maxLoop
+    -- Issue here is that maxLoop will be resolved only on init, instead of every start, which is not that good
+    config.maxLoop = p.maxLoop()
     return RepeaterDecorator:new(config)
 end
 
--- Repeats a child task specified amount of time ('maxLoop' parameter, -1 = no limit). Will stop and report success after the first child task failure. Will report failure if all repetitions were done without a single child failure.
+
 local function RepeatUntilFailure(config)
     local p = config.properties
     config.untilFailure = true
-    config.maxLoop = p.maxLoop
+    config.maxLoop = p.maxLoop()
     return RepeaterDecorator:new(config)
 end
 
--- Refuses to run the child if the time passed from the last run is less than 'milliseconds' property. Range of durations can be provided in a format "milliseconds:200,400", then the amount of time will be determined randomly withing the provided range.
+
 local function Cooldown(config)
+    -- Also - how can we add a cooldown for an interrupt, without triggering an interrup?
     local p = config.properties
-    local timer = config.clock or clock
+    local timer = config.clock or g.clock
+    local lastUseTime = nil
+    local duration = nil
+
 
     config.start = function(self, state)
-        g.print(self.name .. "started")
-        self.duration = parseRangeDuration(p.milliseconds)
+        if not duration then duration = p.duration() end
 
-        local now = timer() * 1000
+        local now = timer()
+        self.gotThrough = false
 
-        if not state.lastUseTime or now - state.lastUseTime > self.duration then
-            state.lastUseTime = now
-            return self:success()
+        if not lastUseTime or now - lastUseTime > duration then
+            lastUseTime = now
+            duration = p.duration()
+            self.gotThrough = true
         else
             return self:fail()
+        end
+    end
+
+    config.finish = function(self, state)
+        -- Rejecting is also finished, so this will be forever locked
+        if self.gotThrough and p.hotWhileRunning() then
+            lastUseTime = timer()
         end
     end
 
     return Decorator:new(config)
 end
 
--- This task always succeeds
+
+local function SetState(config)
+    local p = config.properties
+
+    config.start = function(self, state)
+        for key, val in pairs(p) do
+            state[key] = val()
+        end
+        return self:success()
+    end
+
+    return Task:new(config)
+end
+
+
 local function Succeeder(config)
     config.run = function(self, state)
         self:success()
@@ -235,7 +184,7 @@ local function Succeeder(config)
     return Task:new(config)
 end
 
--- This task always fails
+
 local function Failer(config)
     config.run = function(self, state)
         self:fail()
@@ -243,13 +192,13 @@ local function Failer(config)
     return Task:new(config)
 end
 
-function RandomOutcome(config)
+function RandomSuccess(config)
     local props = config.properties
 
     -- this probably should be on start, not on run
     config.run = function(task, state)
         local roll = math.random() * 100
-        if props.probability > roll then
+        if props.probability() > roll then
             task:success()
         else
             task:fail()
@@ -259,7 +208,6 @@ function RandomOutcome(config)
     return Task:new(config)
 end
 
--- This task runs indefinitely
 local function Runner(config)
     config.run = function(self, state)
         self:running()
@@ -267,18 +215,17 @@ local function Runner(config)
     return Task:new(config)
 end
 
--- This task will run for a specified amount of time ('milliseconds' property). Range of durations can be provided in a format "milliseconds:200,400", then the amount of time will be determined randomly withing the provided range.
 local function Wait(config)
     local p = config.properties
-    local timer = config.clock or clock
+    local timer = config.clock or g.clock
 
     config.start = function(t, state)
-        t.duration = parseRangeDuration(p.milliseconds)
-        t.startTime = timer() * 1000
+        t.duration = p.duration()
+        t.startTime = timer()
     end
 
     config.run = function(t, state)
-        local now = timer() * 1000
+        local now = timer()
         if now - t.startTime > t.duration then
             t:success()
         else
@@ -289,17 +236,20 @@ local function Wait(config)
     return Task:new(config)
 end
 
+
 local function registerPremadeNodes(reg)
+    reg.register("RandomThrough", RandomThrough)
     reg.register("StateCondition", StateCondition)
     reg.register("StateInterrupt", StateInterrupt)
     reg.register("ContinuousStateCondition", ContinuousStateCondition)
-    reg.register("LimitRuntime", LimitRuntime)
+    reg.register("LimitRunTime", LimitRunTime)
     reg.register('RepeatUntilFailure', RepeatUntilFailure)
     reg.register('RepeatUntilSuccess', RepeatUntilSuccess)
     reg.register("Cooldown", Cooldown)
+    reg.register("SetState", SetState)
     reg.register("Succeeder", Succeeder)
     reg.register("Failer", Failer)
-    reg.register("RandomOutcome", RandomOutcome)
+    reg.register("RandomSuccess", RandomSuccess)
     reg.register("Runner", Runner)
     reg.register("Wait", Wait)
 end

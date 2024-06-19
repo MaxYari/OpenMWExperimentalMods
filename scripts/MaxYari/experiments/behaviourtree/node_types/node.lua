@@ -4,12 +4,15 @@ local Node     = class('Node')
 local g        = _BehaviourTreeGlobals
 
 function Node:initialize(config)
-  self._config = config or {}
-  self.name = self._config.name
+  self._initData = config or {}
+  if not config.properties then config.properties = {} end
+  self.properties = self._initData.properties
+  self.p = self.properties
+  self.name = self._initData.name
 end
 
 -- All the node:fn functions can be overriden in child classes to implement new node types. If you want to call the
--- original child function from the override do Child.fn(self, otherArguments)
+-- original child function from the override - do Parent.fn(self, otherArguments)
 function Node:initApiObject()
   self.api = {
     -- Functions provided by the module user
@@ -21,7 +24,7 @@ function Node:initApiObject()
     triggered = function(self, stateObject) end,       --Interrupts only
   }
 
-  for k, v in pairs(self._config) do
+  for k, v in pairs(self._initData) do
     self.api[k] = v
   end
 end
@@ -39,7 +42,7 @@ function Node:deregisterApiStatusFunctions()
 end
 
 function Node:start()
-  g.print(self._config.name .. " STARTED")
+  self.tree:print(self.name .. " STARTED")
   -- Api is repopulated anew after every start
   self:initApiObject()
   self:registerApiStatusFunctions()
@@ -56,21 +59,26 @@ function Node:run()
   self.api.running = nil --deregister so it can not be called outside the run function
 end
 
--- This finish is a finish without success or fail
 function Node:abort() -- Should rename to abort
   -- Call user-facing finish callback
-  g.printLazy(self._config.name .. " ABORTED")
+  self.tree:print(self.name .. " ABORTED")
   self:finish()
 end
 
 -- TASK STATUSES - triggered by the module user, bubble up from childrent to parents
 function Node:running()
-  -- Adding this node's name to a branch string for debug printing
-  g.printLazy(self._config.name .. " RUNNING")
+  self.tree:printLazy(self.name .. " RUNNING")
 end
 
 function Node:success()
-  g.print((self.name or "NONAME_NODE") .. ' SUCCESS')
+  self.tree:print((self.name or "NONAME_NODE") .. ' SUCCESS')
+
+  if self.finished then
+    error(
+      tostring(self.name) ..
+      " node error. Success state was called after node was finished. This should never happen, the node was probably not implemented properly.",
+      2)
+  end
 
   self:finish()
   if self.parentNode then
@@ -79,10 +87,14 @@ function Node:success()
 end
 
 function Node:fail()
-  g.print((self.name or "NONAME_NODE") .. ' FAIL')
+  self.tree:print((self.name or "NONAME_NODE") .. ' FAIL')
 
-  -- Deregister interrupts on the level below
-  self.tree:deregisterInterrupts(self.level + 1)
+  if self.finished then
+    error(
+      tostring(self.name) ..
+      " node error. Fail state was called after node was finished. This should never happen, the node was probably not implemented properly.",
+      2)
+  end
 
   self:finish()
   if self.parentNode then
@@ -90,7 +102,10 @@ function Node:fail()
   end
 end
 
+-- Finish is not a task status and shouldn't be used as such, it should only be used for a final cleanup, never to report a status.
 function Node:finish()
+  self.tree:print((self.name or "NONAME_NODE") .. ' FINISH')
+
   self:deregisterApiStatusFunctions()
   self.finished = true
   self.api:finish(self.tree.stateObject)

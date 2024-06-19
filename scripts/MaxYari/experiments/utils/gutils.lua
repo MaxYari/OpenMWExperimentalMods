@@ -41,20 +41,22 @@ function MeanSampler:new(time_window)
         -- Get the current time
         local current_time = core.getRealTime()
 
+
         -- Add the new value and its timestamp to the values array
         table.insert(self.values, { time = current_time, value = value })
 
         -- Remove values that are older than the specified time window
-        self.warmedUp = false
+
         local i = 1
         while i <= #self.values do
             if current_time - self.values[i].time > self.time_window then
                 table.remove(self.values, i)
-                self.warmedUp = true
             else
                 i = i + 1
             end
         end
+
+        self.warmedUp = self.values[#self.values].time - self.values[1].time > self.time_window * 0.75
 
         -- Calculate the mean of the remaining values
         local sum = 0
@@ -128,5 +130,21 @@ local function pointOnCircle(center, radius, start, distance, direction)
     return newPoint
 end
 module.pointOnCircle = pointOnCircle
+
+local function minHorizontalHalfSize(bounds)
+    return math.abs(math.min(bounds.halfExtents.x, bounds.halfExtents.y))
+end
+module.minHorizontalHalfSize = minHorizontalHalfSize
+
+local function lerp(a, b, t)
+    return a + (b - a) * t
+end
+module.lerp = lerp
+
+local function lerpClamped(a, b, t)
+    t = math.max(0, math.min(t, 1))
+    return lerp(a, b, t)
+end
+module.lerpClamped = lerpClamped
 
 return module

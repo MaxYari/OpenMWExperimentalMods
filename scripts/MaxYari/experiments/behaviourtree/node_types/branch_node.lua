@@ -14,7 +14,7 @@ function BranchNode:initialize(config)
     self.ignoredChildNodes = {}
     for i, node in pairs(self.childNodes) do
       node.indexInParent = i
-      if node.branchIgnore then
+      if node.isStealthy then
         table.insert(self.ignoredChildNodes, node)
       else
         table.insert(self.usableChildNodes, node)
@@ -26,23 +26,15 @@ end
 function BranchNode:start()
   Node.start(self)
 
-  --Its possible that .start resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
-  --already done, since finished flag is set after that
+  -- Its possible that .start resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
+  -- already done, since finished flag is set after that
   if self.finished then return end
 
-  --Register all interrupts
+  -- Register all interrupts
   for i, node in pairs(self.childNodes) do
     if node.isInterrupt then
       self.tree:registerInterrupt(node)
     end
-  end
-end
-
-function BranchNode:run()
-  Node.run(self)
-
-  if self.childNode then
-    self.childNode:run()
   end
 end
 
@@ -59,7 +51,6 @@ end
 
 function BranchNode:finish()
   -- Deregister interrupts on the level below
-  self.childNode = nil
   self.tree:deregisterInterrupts(self.level + 1)
   Node.finish(self)
 end

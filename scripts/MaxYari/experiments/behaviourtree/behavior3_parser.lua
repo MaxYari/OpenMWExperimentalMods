@@ -1,27 +1,48 @@
 local _PACKAGE = (...):match("^(.+)[%./][^%./]+") or ""
 local Registry = require(_PACKAGE .. '/registry')
+local g        = _BehaviourTreeGlobals
 
--- Utility functions ------------------
----------------------------------------
-local function strToBool(str)
+
+local state = nil
+
+local function tryStrToBool(str)
     if str == "true" then
         return true
-    else
+    elseif str == "false" then
         return false
+    else
+        return str
     end
 end
 
-local function strIsBool(str)
-    return str == "true" or str == "false"
+local function ParsePropertyValue(val, config)
+    if type(val) == "string" and string.find(val, "%$") then
+        -- state object reference found, parsing as a lua expression
+        local cleanValue = string.gsub(val, "%$", "")
+        local fn, err = g.loadCodeInScope("return " .. cleanValue, state)
+        if err then
+            print("Can not parse " .. config.name .. " value: " .. cleanValue)
+        end
+        if not fn then
+            error("Somehow property value parser returned a nil function. This shouldn't happen.")
+        end
+        return fn
+    else
+        val = tryStrToBool(val)
+        return function()
+            return val
+        end
+    end
 end
+
 
 local function parseNode(node, treeData)
     if node == nil then
         return error("Passed node argument is nil, this shouldn't happen...")
     end
     local initData = {}
-    initData.properties = node.properties
     initData.name = node.title or node.name
+    initData.isStealthy = node.isStealthy
 
     if node.child then
         initData.childNode = parseNode(treeData.nodes[node.child], treeData)
@@ -40,8 +61,11 @@ local function parseNode(node, treeData)
 
     local fn = Registry.get(node.name)
 
+    initData._properties = node.properties
+    initData.properties = {}
     for field, value in pairs(node.properties) do
-        if strIsBool(value) then node.properties[field] = strToBool(value) end
+        -- Warning! Strings will break since they will be treated as variables!
+        initData.properties[field] = ParsePropertyValue(value, initData)
     end
 
     local inst
@@ -61,9 +85,13 @@ local function parseNode(node, treeData)
     return inst
 end
 
--- Recursively parse a tree into a node config
-local function ParseProjectJsonTable(projectData)
+-- Recursively parse trees into a dictionaries of initialised nodes
+local function ParseBehavior3Project(projectData, _state)
+    state = _state
+
     local trees = {}
+
+    if projectData.data then projectData = projectData.data end
 
     -- Expecting json lists to be dictionaries with 1,2,3 etc fields
     for i, treeData in pairs(projectData.trees) do
@@ -80,4 +108,4 @@ local function ParseProjectJsonTable(projectData)
     return trees
 end
 
-return ParseProjectJsonTable
+return ParseBehavior3Project

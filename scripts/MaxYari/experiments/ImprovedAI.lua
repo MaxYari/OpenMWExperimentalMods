@@ -1,5 +1,11 @@
+-- Mod files
+local gutils = require("utils/gutils")
+local moveutils = require("utils/movementutils")
+local NavigationService = require("utils/navservice")
+
 -- OpenMW libs
 local omwself = require('openmw.self')
+local selfActor = gutils.Actor:new(omwself)
 local core = require('openmw.core')
 local AI = require('openmw.interfaces').AI
 local vfs = require('openmw.vfs')
@@ -8,19 +14,19 @@ local I = require('openmw.interfaces')
 local anim = require('openmw.animation')
 local types = require('openmw.types')
 local nearby = require('openmw.nearby')
--- 3rd pary libs
+
+-- 3rd party libs
 -- Setup important global functions for the behaviourtree 2e module to use--
 _BehaviourTreeImports = {
    loadCodeInScope = util.loadCode,
    clock = core.getRealTime
 }
-----------------------------------------------------------------------------
 local BT = require('behaviourtree/behaviour_tree')
 local json = require("json")
--- Project files
-local gutils = require("utils/gutils")
-local moveutils = require("utils/movementutils")
-local NavigationService = require("utils/navservice")
+----------------------------------------------------------------------------
+
+
+
 
 DebugLevel = 2
 
@@ -67,18 +73,20 @@ local state = {
       self.run = true
       self.jump = false
       self.attack = 0
+      self.attackDirection = nil
       self.movement = 0
       self.sideMovement = 0
       self.range = 1e42
+      self.lookDirection = nil
    end
 }
 
-
+local fCombatDistance = core.getGMST("fCombatDistance")
 
 
 local navService = NavigationService({
-   cacheDuration = 0.5,
-   targetPosDeadzone = 70,
+   cacheDuration = 1,
+   targetPosDeadzone = 50,
    pathingDeadzone = 35
 })
 
@@ -87,58 +95,54 @@ local navService = NavigationService({
 ---------------------------------------
 
 
-function MoveToTarget(config)
+function ChaseTarget(config)
    local props = config.properties
 
-   config.start = function(self, state)
-      self.runSpeed = types.Actor.getRunSpeed(omwself)
-      self.walkSpeed = types.Actor.getWalkSpeed(omwself)
 
-      self.desiredSpeed = props.speed()
-      if not self.desiredSpeed or self.desiredSpeed == -1 then
-         self.desiredSpeed = self.runSpeed
-      elseif self.desiredSpeed > self.runSpeed then
-         self.desiredSpeed = self.runSpeed
-      end
+   config.start = function(task, state)
+      config.findTargetActor(task, state)
+      task.desiredSpeed = -1
+      if props.speed then task.desiredSpeed = props.speed() end
    end
 
-   config.run = function(self, state)
-      if not state.targetActor then
-         return self:fail()
+   config.run = function(task, state)
+      config.findTargetActor(task, state)
+      if not task.targetActor or types.Actor.isDead(task.targetActor) then
+         return task:fail()
       end
 
-      navService:setTargetPos(state.targetActor.position)
+      navService:setTargetPos(task.targetActor.position)
+      local movement, sideMovement, run = navService:run({
+         desiredSpeed = task.desiredSpeed,
+         ignoredObstacleObject = task
+             .targetActor
+      })
 
-      if (state.targetActor.position - omwself.position):length() <= props.proximity() then
-         return self:success()
+      local proximity = 0
+      if props.proximity then proximity = props.proximity() end
+      if (task.targetActor.position - omwself.position):length() <= proximity or navService:isPathCompleted() then
+         return task:success()
       end
 
-      -- Calculating speed
-      local speedMult, shouldRun = moveutils.calcSpeedMult(self.desiredSpeed, self.walkSpeed, self.runSpeed)
-      state.run = shouldRun
+      -- Add velocity based failer
 
-      if navService.nextPathPoint then
-         state.movement, state.sideMovement = moveutils.calculateMovement(omwself.object,
-            navService.nextPathPoint, speedMult)
-      end
+      state.movement, state.sideMovement, state.run = movement, sideMovement, run
 
-      return self:running()
+      return task:running()
    end
+
 
    return BT.Task:new(config)
 end
-
-BT.register('MoveToTarget', MoveToTarget)
-
-
 
 function MoveInDirection(config)
    -- Directions are relative to the direction from actor to its target, i.e closer to target, further, strafe around to the right and to the left.
    local props = config.properties
 
    config.start = function(self, state)
-      self.startPos = omwself.object.position
-      self.firstRun = true
+      self.lastPos = omwself.position
+      self.coveredDistance = 0
+
       self.velocitySampler = gutils.MeanSampler:new(0.75)
 
       self.runSpeed = types.Actor.getRunSpeed(omwself)
@@ -158,14 +162,15 @@ function MoveInDirection(config)
    end
 
    config.run = function(self, state)
-      if not state.targetActor then
+      if not state.enemyActor then
          return self:fail()
       end
 
       local currentPos = omwself.position
+      self.coveredDistance = self.coveredDistance + (currentPos - self.lastPos):length()
 
       -- Vector magic to calculate a run direction
-      local lookDir = (state.targetActor.position - omwself.object.position):normalize() -- due to the slow pathing refresh this doesnt result in strafing around, but rather in noticeable step to the side. Would be better with shorter strafes, or with different math (finding line to connect to another point around the circle) or with manual moving around.
+      local lookDir = (state.enemyActor.position - omwself.object.position):normalize()
       local lookDir2D = util.vector2(lookDir.x, lookDir.y)
       local directionMult
       if props.direction() == "forward" then
@@ -179,40 +184,32 @@ function MoveInDirection(config)
       else
          error("Wrong direction property passed into MoveInDirection. Direction: " .. tostring(props.direction()))
       end
-      local moveDir2D = lookDir2D:rotate(directionMult * math.pi / 2):normalize()
-      local moveVec2D = moveDir2D *
-          10 -- Look ~15 cm ahead, will break at very high speeds, but that will not happen, right?
-      local movePos = omwself.object.position + util.vector3(moveVec2D.x, moveVec2D.y, 0)
 
-      -- Check nearest navmesh pos
-      local navMeshPosition = nearby.findNearestNavMeshPosition(movePos)
-      local posDifference
+      local moveDir2D = lookDir2D:rotate(directionMult * math.pi / 2)
+      local moveDir3D = util.vector3(moveDir2D.x, moveDir2D.y, 0):normalize()
+
+      local canMove, reason = navService:canMoveInDirection(moveDir3D)
+
       local shouldAbort = false
-      if not navMeshPosition then
-         gutils.print("Move failed due to no nearesth navmesh point", 2)
-         return self:fail()
-      else
-         posDifference = (movePos - navMeshPosition):length()
-         if posDifference > gutils.minHorizontalHalfSize(self.bounds) * 0.9 then
-            gutils.print("Move finished due to big difference between a desired and navmesh position", 2)
-            shouldAbort = true
-         end
+
+      if not canMove then
+         gutils.print("Move finished due to: " .. reason)
+         shouldAbort = true
       end
 
-      -- Track mean value of velocity (time window 0.3sec), if it drops too low - we are probably stuck running inplace
-      if self.lastPos then
-         self.velocitySampler:sample((self.lastPos - currentPos):length() / state.dt)
-         if self.velocitySampler.warmedUp and self.velocitySampler.mean <= 20 then
-            gutils.print("Move finished due to low velocity " .. self.velocitySampler.mean, 2)
-            shouldAbort = true
-         end
-      end
-
-      -- TO DO: Do small raycast here in movement direction, if we hit something - abort
+      -- -- Probably should ditch that as well
+      -- -- Track mean value of velocity (time window 0.3sec), if it drops too low - we are probably stuck running inplace
+      -- if self.lastPos and selfActor.canMove() then
+      --    self.velocitySampler:sample((self.lastPos - currentPos):length() / state.dt)
+      --    if self.velocitySampler.warmedUp and self.velocitySampler.mean <= 20 then
+      --       gutils.print("Move finished due to low velocity " .. self.velocitySampler.mean, 2)
+      --       shouldAbort = true
+      --    end
+      -- end
 
       -- Abort if should
       if shouldAbort then
-         if (self.startPos - currentPos):length() > props.distance() * 0.33 then
+         if self.coveredDistance > props.distance() * 0.33 then
             -- Atleast we moved some distance, consider it a success
             return self:success()
          else
@@ -221,9 +218,8 @@ function MoveInDirection(config)
          end
       end
 
-
       -- Done if we covered required distance
-      if (self.startPos - currentPos):length() > props.distance() then
+      if self.coveredDistance > props.distance() then
          gutils.print("Move success since distance was covered", 2)
          return self:success()
       end
@@ -233,11 +229,12 @@ function MoveInDirection(config)
       state.run = shouldRun
 
       -- And movement values!
-      state.movement, state.sideMovement = moveutils.calculateMovement(omwself.object,
-         movePos, speedMult)
+      local movement, sideMovement = moveutils.calculateMovement(omwself.object,
+         moveDir3D)
+      state.movement, state.sideMovement = movement * speedMult, sideMovement * speedMult
 
       self.lastPos = currentPos
-      self.firstRun = false
+
       if self["running"] then return self:running() end
       -- we are also running this run() method on start() to avoid having gaps between movements on repeated tasks
       -- but on start() we won't have running status reporter available, so just ignore if thats the case
@@ -262,13 +259,17 @@ end
 BT.register('Jump', Jump)
 
 function StartAttack(config)
+   config.start = function(self, state)
+      state.attack = omwself.ATTACK_TYPE.Chop
+   end
    config.run = function(self, state)
       if self.attackRequested then
-         if not state.attackState then
+         if state.attackState == attackStates.NO_STATE then
             return self:fail()
          end
       else
          self.attackRequested = true
+         -- state.attackDirection = util.vector2(1, 0)
       end
 
       if state.attackState == config.successAttackState then
@@ -279,7 +280,7 @@ function StartAttack(config)
          return self:success()
       end
 
-      state.attack = 1
+      state.attack = omwself.ATTACK_TYPE.Chop
 
       return self:running()
    end
@@ -367,7 +368,38 @@ end
 
 BT.register('ReleaseAttack', ReleaseAttack)
 
+function ChaseEnemy(config)
+   config.findTargetActor = function(task, state)
+      task.targetActor = state.enemyActor
+   end
 
+   return ChaseTarget(config)
+end
+
+BT.register('ChaseEnemy', ChaseEnemy)
+
+function RetreatToFriend(config)
+   config.findTargetActor = function(task, state)
+      if task.targetActor then return end
+
+      for index, gameObject in ipairs(nearby.actors) do
+         local fightVal = types.Actor.stats.ai.fight(gameObject)
+         gutils.print("Looking at an actor " .. gameObject.recordId)
+         if types.NPC.objectIsInstance(gameObject) then
+            gutils.print("Is an npc " .. fightVal.modified)
+            if gameObject.recordId ~= "player" and fightVal.modified >= 60 then
+               gutils.print("Found a fight-ready NPC, seeking their help! Actor is: " .. gameObject.recordId)
+               task.targetActor = gameObject
+               break
+            end
+         end
+      end
+   end
+
+   return ChaseTarget(config)
+end
+
+BT.register("RetreatToFriend", RetreatToFriend)
 
 -- Parsing JSON behaviourtree -----
 ----------------------------------
@@ -385,19 +417,19 @@ file:close()
 
 -- Initialise behaviour trees ----------------------------------------------
 local bTrees = BT.LoadBehavior3Project(projectJsonTable, state)
-bTrees.Combat:setDebugLevel(1)
+bTrees.Combat:setDebugLevel(0)
 bTrees.CombatAux:setDebugLevel(0)
 bTrees.Locomotion:setDebugLevel(0)
 -- Ready to use! -----------------------------------------------------------
 
 
 -- Doing some inventory stuff --
-local inventory = types.Actor.inventory(omwself)
+local inventory = selfActor.inventory()
 print("Inventory resolved:", inventory:isResolved())
 local weapons = inventory:getAll(types.Weapon)
 print("Following weapons found in the inventory")
 for i, weaponObj in pairs(weapons) do
-   local isEquipped = types.Actor.hasEquipped(omwself, weaponObj)
+   local isEquipped = selfActor.hasEquipped(weaponObj)
    local weaponRecord = types.Weapon.record(weaponObj.recordId)
    print("i: " ..
       i ..
@@ -406,11 +438,10 @@ for i, weaponObj in pairs(weapons) do
       " name: " ..
       weaponRecord.name ..
       " type: " .. weaponRecord.type .. " reach: " .. weaponRecord.reach .. " equipped: " .. tostring(isEquipped))
-
-   if isEquipped then
-      state.reach = weaponRecord.reach * 140
-   end
 end
+
+
+
 
 
 -- Main update function (finally) --
@@ -423,47 +454,68 @@ local function onUpdate(dt)
 
    -- Ignore native ai behaviour if its a Combat behaviour
    local activeAiPackage = AI.getActivePackage()
-   if activeAiPackage then
-      if activeAiPackage.type == "Combat" then
-         omwself:enableAI(false)
-      end
+   if activeAiPackage and activeAiPackage.type == "Combat" then
+      -- Combat is completely handled by behaviour trees
+      omwself:enableAI(false)
    else
       omwself:enableAI(true)
-      print("No AI package :()")
+      if not activeAiPackage then
+         print("No AI package :()")
+      end
+      return
    end
 
-   local targetActor = AI.getActiveTarget("Combat")
-   state.targetActor = targetActor
+   local combatTarget = AI.getActiveTarget("Combat")
+   state.enemyActor = combatTarget
 
    -- Provide Behaviour Tree state with the necessary info
-   if targetActor then
-      state.range = (targetActor.position - omwself.object.position):length();
+   if combatTarget then
+      state.range = gutils.getDistanceToBounds(omwself, combatTarget)
+   end
+   local weaponObj = selfActor.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+   if weaponObj then
+      local weaponRecord = types.Weapon.record(weaponObj.recordId)
+      state.reach = weaponRecord.reach * fCombatDistance
    end
 
    -- Verify that attack animation matching the current attackGroup is still playing - if its not - probably it was interrupted - cleaning attack state.
    if state.attackGroup then
-      local animTime = anim.getCurrentTime(omwself.object, state.attackGroup)
+      local animTime = anim.getCurrentTime(omwself, state.attackGroup)
       if not animTime then
          state.attackGroup = nil
          state.attackState = attackStates.NO_STATE
       end
    end
 
-   -- Run the combat behaviour tree!
+   -- Run behaviour trees!
    bTrees["Combat"]:run()
    bTrees["CombatAux"]:run()
    bTrees["Locomotion"]:run()
-   -- Does nav service need to constantly run? Probably not.
-   navService:run()
+
 
    -- Apply the results of Behaviour Tree run to the actor
    omwself.controls.run = state.run
-   omwself.controls.movement = state.movement
-   omwself.controls.sideMovement = state.sideMovement
+   if state.attackDirection then
+      gutils.print(state.attackDirection, "attack direction requested", state.attack, 2)
+      -- Attack task can request specific movement direction to execute specific attack
+      omwself.controls.sideMovement = state.attackDirection.x
+      omwself.controls.movement = state.attackDirection.y
+   else
+      omwself.controls.movement = state.movement
+      omwself.controls.sideMovement = state.sideMovement
+   end
+
 
    omwself.controls.use = state.attack
    omwself.controls.jump = state.jump
-   omwself.controls.yawChange = gutils.lerpClamped(0, -moveutils.lookRotation(omwself, targetActor.position), dt * 3)
+
+   if not state.lookDirection and state.enemyActor then
+      state.lookDirection = state.enemyActor.position - omwself.position
+   end
+   if state.lookDirection then
+      omwself.controls.yawChange = gutils.lerpClamped(0,
+         -moveutils.lookRotation(omwself, omwself.position + state.lookDirection), dt * 3)
+   end
 end
 
 
@@ -473,6 +525,9 @@ end
 I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    --print("Animation text key! " .. groupname .. " : " .. key)
    --print("Position of the key: " .. tostring(anim.getTextKeyTime(omwself.object, groupname .. ": " .. key)))
+
+   --if groupname starts with hit - mark it somehow, or maybe continuously check if groupname is playing
+   -- guess save the hit animation, then in onupdate check if its still playing, when hit is still playing - ignore speed stuff
 
    if string.find(key, "chop") or string.find(key, "thrust") or string.find(key, "slash") then
       state.attackState = attackStates.WINDUP_START

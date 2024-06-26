@@ -1,8 +1,93 @@
 local omwself = require('openmw.self')
 local types = require('openmw.types')
 local nearby = require('openmw.nearby')
+local util = require('openmw.util')
 
 local gutils = require("utils/gutils")
+local moveutils = require("utils/movementutils")
+
+local selfActor = gutils.Actor:new(omwself)
+
+
+-- Local obstacle avoidance class --------------------------------------------------------
+Obstacle = {}
+Obstacle.__index = Obstacle
+
+
+-- Constructor
+function Obstacle:new(obstacle)
+    local obstacleHS = gutils.diagonalFlatHalfSize(types.Actor.getPathfindingAgentBounds(obstacle))
+    local actorHS = gutils.diagonalFlatHalfSize(selfActor.getPathfindingAgentBounds())
+    local threshold = obstacleHS + actorHS
+
+    local obj = {
+        obstacle = obstacle,
+        threshold = threshold,
+        maxEffectiveDistance = threshold + actorHS * 2,
+        distance = function(self)
+            return (self.obstacle.position - omwself.position):length()
+        end
+    }
+    setmetatable(obj, Obstacle)
+
+    return obj
+end
+
+-- Method to check if the obstacle is passed
+function Obstacle:isValid(desiredDirection)
+    local distanceVector = self.obstacle.position - omwself.position
+    local distance = distanceVector:length()
+    -- Calculate the projection of desired velocity onto the distance vector
+    local projection = desiredDirection:dot(distanceVector:normalize())
+    -- Return true if projection is less than 0
+    return distance < self.maxEffectiveDistance and projection > 0
+end
+
+-- Method to calculate the avoidance force
+function Obstacle:calculateAvoidanceDirection(desiredDirection, lastDirection)
+    local distanceVector = self.obstacle.position - omwself.position
+    local distance = distanceVector:length()
+    local normalizedDistance = distanceVector:normalize()
+    local meanDesiredDirection = lastDirection
+    -- local meanDesiredDirection = (desiredDirection + lastDirection) / 2
+    local avoidanceDirection
+
+    if not self.avoidanceSide then
+        -- Normalize the distance vector
+        local crossProduct = meanDesiredDirection:cross(normalizedDistance)
+
+        -- Determine side of avoidance based on cross product
+        if crossProduct.z < 0 then
+            self.avoidanceSide = -1
+        else
+            self.avoidanceSide = 1
+        end
+    end
+
+    avoidanceDirection = util.vector3(normalizedDistance.y, -normalizedDistance.x, 0) * self.avoidanceSide
+
+    --print("Mean desired:", meanDesiredDirection, "To obstacel:", normalizedDistance, "Avoidance:",
+    --    avoidanceDirection)
+
+    -- Linear interpolation
+    local alpha = (self.maxEffectiveDistance - distance) / (self.maxEffectiveDistance - self.threshold)
+    alpha = math.max(alpha, 0) -- Ensure alpha is not negative
+
+    local interpolatedDirection = meanDesiredDirection * (1 - alpha) + avoidanceDirection * alpha
+
+    --print("Intepolated:", interpolatedDirection)
+
+    return interpolatedDirection
+end
+
+function Obstacle:flipAvoidanceDirection()
+    if not self.avoidanceSide then return end
+    self.avoidanceSide = self.avoidanceSide * -1
+end
+
+----------------------------------------------------------------------------------------------
+
+
 
 
 -- Navigation service handles calculation of a nav path from self to targetPos in an optimised cached manner --
@@ -15,9 +100,48 @@ local function NavigationService(config)
         pathStatus = nil,
         targetPos = nil,
         pathPointIndex = 1,
-        nextPathPoint = nil
+        nextPathPoint = nil,
+        runSpeed = selfActor.getRunSpeed(),
+        walkSpeed = selfActor.getWalkSpeed(),
+        bounds = selfActor.getPathfindingAgentBounds(),
+        lastDirection = nil,
+        posToVelSampler = gutils.PosToVelSampler:new(1)
     }
 
+
+
+    -- Navmesh point validity checker ----------------------------------
+    function NavData:canMoveTo(movePos)
+        -- Check nearest navmesh pos
+        local moveVec = movePos - omwself.position
+        local navMeshPosition = nearby.findNearestNavMeshPosition(movePos)
+
+        local navMeshMoveVec = navMeshPosition - omwself.position
+        local navMeshDist = navMeshMoveVec:dot(moveVec:normalize()) -- Projection onto a move vector
+
+        local endPosDifference = (movePos - navMeshPosition):length()
+
+        if not navMeshPosition then
+            return false, "No nearest navmesh point"
+        elseif navMeshDist < moveVec:length() * 0.9 then
+            return false, "Navmesh position is too close to the current position"
+        elseif endPosDifference > gutils.minHorizontalHalfSize(self.bounds) * 0.9 then
+            return false, "Navmesh position is too far from the desired move position"
+        end
+
+        return true
+    end
+
+    function NavData:canMoveInDirection(direction, lookAhead)
+        if not lookAhead then lookAhead = 10 end
+        return self:canMoveTo(omwself.position + direction * lookAhead)
+    end
+
+    ----------------------------------------------------------------------------
+
+
+
+    -- Pathing functions -------------------------------------------------------
     function NavData:getPathStatusVerbose()
         if self.pathStatus == nil then return nil end
         return gutils.findField(nearby.FIND_PATH_STATUS, self.pathStatus)
@@ -41,7 +165,7 @@ local function NavigationService(config)
 
     local function findPath()
         NavData.pathStatus, NavData.path = nearby.findPath(omwself.object.position, NavData.targetPos, {
-            agentBounds = types.Actor.getPathfindingAgentBounds(omwself),
+            agentBounds = selfActor.getPathfindingAgentBounds(),
         })
         NavData.pathPointIndex = 1
         return NavData.pathStatus, NavData.path
@@ -60,32 +184,103 @@ local function NavigationService(config)
         return (pos1 - pos2):length() <= config.pathingDeadzone
     end
 
-    function NavData:run()
+    function NavData:run(opts)
+        -- Setting up defaults
+        if opts.desiredSpeed == -1 then
+            opts.desiredSpeed = selfActor.getRunSpeed()
+        end
+
         -- Fetching a new path if necessary
-        if NavData.targetPos then
+        if self.targetPos then
             local pathStatus, path, cacheStatus = findPathCached()
         end
 
         -- Updating path progress
-        if NavData.path and NavData.pathPointIndex <= #NavData.path then
+        if self.path and self.pathPointIndex <= #self.path then
             -- Check if the actor reached the current target point
-            while NavData.pathPointIndex <= #NavData.path do
-                if positionReached(omwself.object.position, NavData.path[NavData.pathPointIndex]) then
-                    NavData.pathPointIndex = NavData.pathPointIndex + 1
+            -- Loop through the path, cast nav rays and check if can be reached directly?
+            while self.pathPointIndex <= #self.path do
+                if positionReached(omwself.object.position, self.path[self.pathPointIndex]) then
+                    self.pathPointIndex = self.pathPointIndex + 1
                 else
                     break;
                 end
             end
-            if NavData.pathPointIndex <= #NavData.path then
-                NavData.nextPathPoint = NavData.path[NavData.pathPointIndex]
+            if self.pathPointIndex <= #self.path then
+                self.nextPathPoint = self.path[self.pathPointIndex]
             else
-                NavData.nextPathPoint = nil
+                self.nextPathPoint = nil
                 -- Reached path end
             end
         end
+
+        -- Calculating movement
+        local movement, sideMovement
+        local desiredDirection
+
+        if self.nextPathPoint then
+            desiredDirection = (self.nextPathPoint - omwself.position):normalize()
+            movement, sideMovement = moveutils.calculateMovement(omwself,
+                desiredDirection)
+        else
+            movement, sideMovement = 0, 0
+        end
+
+        -- Detecting obstacles and adjusting movement if necessary
+        if desiredDirection and self.lastDirection then
+            -- Checking if last obstacle is still valid
+            if self.closestObs and not self.closestObs:isValid(desiredDirection) then
+                self.closestObs = nil
+            end
+            -- Looking for nearby obstacles
+            for index, gameObject in ipairs(nearby.actors) do
+                if opts.ignoredObstacleObject and opts.ignoredObstacleObject.id == gameObject.id then goto continue end
+                if gameObject.id == omwself.id then goto continue end
+
+                local obstacle = Obstacle:new(gameObject)
+                if obstacle:isValid(desiredDirection) then
+                    if not self.closestObs or obstacle:distance() < self.closestObs:distance() then
+                        self.closestObs = obstacle
+                    end
+                end
+
+                ::continue::
+            end
+            -- Trying to avoid the obstacle
+            if self.closestObs then
+                --print("Colliding with " .. self.closestObs.obstacle.recordId)
+                local avoidanceDirection = self.closestObs:calculateAvoidanceDirection(desiredDirection,
+                    self.lastDirection)
+
+                if self:canMoveInDirection(avoidanceDirection) then
+                    desiredDirection = avoidanceDirection
+                    movement, sideMovement = moveutils.calculateMovement(omwself, desiredDirection)
+                end
+
+                -- Detecting being stuck and changing avoidance irection
+                self.posToVelSampler:sample(omwself.position)
+                if self.posToVelSampler.warmedUp and self.posToVelSampler:mean():length() < opts.desiredSpeed * 0.1 then
+                    gutils.print("It seems like we are stuck in here, canging obstacle avoidance direction")
+                    self.closestObs:flipAvoidanceDirection()
+                    self.posToVelSampler = gutils.PosToVelSampler:new(self.posToVelSampler.time_window)
+                end
+            end
+        end
+
+        self.lastDirection = desiredDirection
+
+        -- adjusting and returning movement
+        local speedMult, shouldRun = moveutils.calcSpeedMult(opts.desiredSpeed, self.walkSpeed, self.runSpeed)
+
+        return movement * speedMult, sideMovement * speedMult, shouldRun
     end
+
+    ----------------------------------------------------------------------------------------
+
+
 
     return NavData
 end
+
 
 return NavigationService

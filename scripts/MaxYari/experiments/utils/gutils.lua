@@ -1,4 +1,7 @@
 local core = require('openmw.core')
+local types = require('openmw.types')
+local util = require('openmw.util')
+
 
 -- Generic utility functions --
 
@@ -46,7 +49,6 @@ function MeanSampler:new(time_window)
         table.insert(self.values, { time = current_time, value = value })
 
         -- Remove values that are older than the specified time window
-
         local i = 1
         while i <= #self.values do
             if current_time - self.values[i].time > self.time_window then
@@ -59,9 +61,13 @@ function MeanSampler:new(time_window)
         self.warmedUp = self.values[#self.values].time - self.values[1].time > self.time_window * 0.75
 
         -- Calculate the mean of the remaining values
-        local sum = 0
+        local sum = nil
         for _, v in ipairs(self.values) do
-            sum = sum + v.value
+            if sum then
+                sum = sum + v.value
+            else
+                sum = v.value
+            end
         end
         if #self.values > 0 then
             self.mean = sum / #self.values
@@ -78,6 +84,33 @@ function MeanSampler:new(time_window)
 end
 
 module.MeanSampler = MeanSampler
+
+local PosToVelSampler = {
+    new = function(self, time_window)
+        self.positionSampler = MeanSampler:new(time_window)
+        self.velocitySampler = MeanSampler:new(time_window)
+        self.time_window = time_window
+        return self
+    end,
+    sample = function(self, pos)
+        self.positionSampler:sample(pos)
+        if #self.positionSampler.values - 1 > 0 then
+            local lastPosSample = self.positionSampler.values[#self.positionSampler.values]
+            local preLastPosSample = self.positionSampler.values[#self.positionSampler.values - 1]
+            local velocity = (lastPosSample.value - preLastPosSample.value) /
+                (lastPosSample.time - preLastPosSample.time)
+            self.velocitySampler:sample(velocity)
+        end
+        self.warmedUp = self.velocitySampler.warmedUp
+    end,
+    mean = function(self)
+        return self.velocitySampler.mean
+    end
+}
+
+module.PosToVelSampler = PosToVelSampler
+
+
 
 local function findField(dictionary, value)
     for field, val in pairs(dictionary) do
@@ -136,6 +169,19 @@ local function minHorizontalHalfSize(bounds)
 end
 module.minHorizontalHalfSize = minHorizontalHalfSize
 
+local function diagonalFlatHalfSize(bounds)
+    return util.vector2(bounds.halfExtents.x, bounds.halfExtents.y):length()
+end
+module.diagonalFlatHalfSize = diagonalFlatHalfSize
+
+local function getDistanceToBounds(actor, target)
+    local dist = (target.position - actor.position):length() -
+        types.Actor.getPathfindingAgentBounds(target).halfExtents.y -
+        types.Actor.getPathfindingAgentBounds(actor).halfExtents.y;
+    return dist;
+end
+module.getDistanceToBounds = getDistanceToBounds
+
 local function lerp(a, b, t)
     return a + (b - a) * t
 end
@@ -146,5 +192,25 @@ local function lerpClamped(a, b, t)
     return lerp(a, b, t)
 end
 module.lerpClamped = lerpClamped
+
+local Actor = {
+    _mt = {
+        __index = function(instance, key)
+            return function(...)
+                return types.Actor[key](instance.gameObject, ...)
+            end
+        end
+    },
+    new = function(self, go)
+        local instance = {
+            gameObject = go
+        }
+        setmetatable(instance, self._mt)
+        return instance
+    end,
+}
+
+module.Actor = Actor
+
 
 return module

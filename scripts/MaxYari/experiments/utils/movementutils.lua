@@ -19,13 +19,12 @@ local function lookRotation(actor, targetPos)
 end
 module.lookRotation = lookRotation
 
-local function calculateMovement(actor, targetPos, speed)
+local function calculateMovement(actor, moveDir)
     local lookDir = lookDirection(actor)
-    local moveDir = targetPos - actor.position
     local angle = flatAngleBetween(lookDir, moveDir)
 
     local forwardVec = util.vector2(1, 0)
-    local movementVec = forwardVec:rotate(-angle):normalize() * speed;
+    local movementVec = forwardVec:rotate(-angle):normalize();
 
     return movementVec.x, movementVec.y
 end
@@ -34,7 +33,9 @@ module.calculateMovement = calculateMovement
 local function calcSpeedMult(desiredSpeed, walkSpeed, runSpeed)
     local speedMult = 1
     local shouldRun = true
-    if desiredSpeed < walkSpeed then
+    if desiredSpeed == -1 then
+
+    elseif desiredSpeed < walkSpeed then
         shouldRun = false
         speedMult = desiredSpeed / walkSpeed
     elseif desiredSpeed < runSpeed then

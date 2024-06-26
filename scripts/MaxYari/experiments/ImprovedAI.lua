@@ -25,8 +25,7 @@ local BT = require('behaviourtree/behaviour_tree')
 local json = require("json")
 ----------------------------------------------------------------------------
 
-
-
+local fCombatDistance = core.getGMST("fCombatDistance")
 
 DebugLevel = 2
 
@@ -34,9 +33,9 @@ DebugLevel = 2
 gutils.print("Trying to use improved AI on " .. omwself.object.recordId)
 if omwself.object.recordId ~= "heddvild" then return end
 
-gutils.print("Improved AI is ON")
+gutils.print(omwself.object.recordId .. ": Improved AI is ON")
 
-local attackStates = {
+local ATTACK_STATE = {
    NO_STATE = 0,
    WINDUP_START = 1,
    WINDUP_MIN = 2,
@@ -47,12 +46,35 @@ local attackStates = {
 }
 
 local state = {
-   -- Doesn't reset every frame
-   attackState = attackStates.NO_STATE,
+   -- Persistent state fields
+   attackState = ATTACK_STATE.NO_STATE,
    attackGroup = nil,
    dt = 0,
    reach = 140,
    locomotion = nil,
+   engageRange = 600,
+
+   -- Inclinations
+   standGroundInc = 0,
+   fleeInc = 0,
+   goHamInc = 0,
+   chargeInc = 50,
+   rootedAttackInc = 50,
+   moveStopInc = 100,
+   moveCircleInc = 100,
+   moveBackInc = 100,
+
+   clear = function(self)
+      -- Fields below will be reset every frame
+      self.run = true
+      self.jump = false
+      self.attack = 0
+      self.movement = 0
+      self.sideMovement = 0
+      self.range = 1e42
+      self.lookDirection = nil
+   end,
+
    -- Functions to be used in the editor
    r = function(min, max)
       if min == nil then
@@ -65,23 +87,22 @@ local state = {
       return math.random(m, n)
    end,
    isHoldingAttack = function(self)
-      return self.attackState == attackStates.WINDUP_MIN or self.attackState == attackStates.WINDUP_MAX
+      return self.attackState == ATTACK_STATE.WINDUP_MIN or self.attackState == ATTACK_STATE.WINDUP_MAX
    end,
-
-   clear = function(self)
-      -- Resets every frame
-      self.run = true
-      self.jump = false
-      self.attack = 0
-      self.attackDirection = nil
-      self.movement = 0
-      self.sideMovement = 0
-      self.range = 1e42
-      self.lookDirection = nil
+   attacksFromSkill = function(self)
+      if not self.weaponRecord then return math.random(1, 2) end
+      --types.SkillStats.bluntweapon(omwself)
+      --self.weaponRecord.type
+      local skill = gutils.getWeaponSkill(self.weaponRecord)
+      if skill >= 75 then
+         return math.random(2, 4)
+      elseif skill >= 40 then
+         return math.random(1, 3)
+      else
+         return math.random(1, 2)
+      end
    end
 }
-
-local fCombatDistance = core.getGMST("fCombatDistance")
 
 
 local navService = NavigationService({
@@ -112,25 +133,28 @@ function ChaseTarget(config)
       end
 
       navService:setTargetPos(task.targetActor.position)
-      local movement, sideMovement, run = navService:run({
+      local movement, sideMovement, run, lookDirection = navService:run({
          desiredSpeed = task.desiredSpeed,
          ignoredObstacleObject = task
              .targetActor
       })
 
       local proximity = 0
+      local distance = gutils.getDistanceToBounds(task.targetActor, omwself)
       if props.proximity then proximity = props.proximity() end
-      if (task.targetActor.position - omwself.position):length() <= proximity or navService:isPathCompleted() then
+      if distance <= proximity or navService:isPathCompleted() then
          return task:success()
       end
 
-      -- Add velocity based failer
 
-      state.movement, state.sideMovement, state.run = movement, sideMovement, run
+      state.movement, state.sideMovement, state.run, state.lookDirection = movement, sideMovement, run, lookDirection
+      if config.getLookDirection and config.getLookDirection(task, state) then
+         state.lookDirection = config
+             .getLookDirection(task, state)
+      end
 
       return task:running()
    end
-
 
    return BT.Task:new(config)
 end
@@ -143,22 +167,14 @@ function MoveInDirection(config)
       self.lastPos = omwself.position
       self.coveredDistance = 0
 
-      self.velocitySampler = gutils.MeanSampler:new(0.75)
-
       self.runSpeed = types.Actor.getRunSpeed(omwself)
       self.walkSpeed = types.Actor.getWalkSpeed(omwself)
-      self.bounds = types.Actor.getPathfindingAgentBounds(omwself)
-
       self.desiredSpeed = props.speed()
-      if not self.desiredSpeed or self.desiredSpeed == -1 then
-         self.desiredSpeed = self.runSpeed
-      elseif self.desiredSpeed > self.runSpeed then
-         self.desiredSpeed = self.runSpeed
-      end
+      self.bounds = types.Actor.getPathfindingAgentBounds(omwself)
 
       gutils.print("Move direction: " .. props.direction(), 2)
 
-      config.run(self, state) --Repeater breaks if this reports success or fail
+      config.run(self, state)
    end
 
    config.run = function(self, state)
@@ -196,16 +212,6 @@ function MoveInDirection(config)
          gutils.print("Move finished due to: " .. reason)
          shouldAbort = true
       end
-
-      -- -- Probably should ditch that as well
-      -- -- Track mean value of velocity (time window 0.3sec), if it drops too low - we are probably stuck running inplace
-      -- if self.lastPos and selfActor.canMove() then
-      --    self.velocitySampler:sample((self.lastPos - currentPos):length() / state.dt)
-      --    if self.velocitySampler.warmedUp and self.velocitySampler.mean <= 20 then
-      --       gutils.print("Move finished due to low velocity " .. self.velocitySampler.mean, 2)
-      --       shouldAbort = true
-      --    end
-      -- end
 
       -- Abort if should
       if shouldAbort then
@@ -260,27 +266,48 @@ BT.register('Jump', Jump)
 
 function StartAttack(config)
    config.start = function(self, state)
-      state.attack = omwself.ATTACK_TYPE.Chop
+      -- Pick the best attack type accounting for the weapon skill and some randomness
+      if state.weaponRecord then
+         local attacks = gutils.getSortedAttackTypes(state.weaponRecord)
+         local goodAttacks = gutils.getGoodAttacks(attacks)
+         local attack
+
+         local skill = gutils.getWeaponSkill(state.weaponRecord)
+         local prob = util.clamp(util.remap(skill, 0, 75, 0, 100), 0, 90)
+
+         if math.random() * 100 < prob then
+            -- if random less than weapon skill (rescale to 0-75 skill, and clamp chance to 0-90)
+            attack = gutils.pickWeightedRandomAttackType(goodAttacks)
+         else
+            -- otherwise pure random
+            attack = attacks[math.random(0, #attacks)]
+         end
+
+         self.ATTACK_TYPE = omwself.ATTACK_TYPE[attack.type]
+      else
+         self.ATTACK_TYPE = omwself.ATTACK_TYPE.Thrust
+      end
+
+      state.attack = self.ATTACK_TYPE
    end
    config.run = function(self, state)
       if self.attackRequested then
-         if state.attackState == attackStates.NO_STATE then
+         if state.attackState == ATTACK_STATE.NO_STATE then
             return self:fail()
          end
       else
          self.attackRequested = true
-         -- state.attackDirection = util.vector2(1, 0)
       end
 
       if state.attackState == config.successAttackState then
          return self:success()
       end
 
-      if state.attackState > attackStates.WINDUP_MAX then
+      if state.attackState > ATTACK_STATE.WINDUP_MAX then
          return self:success()
       end
 
-      state.attack = omwself.ATTACK_TYPE.Chop
+      state.attack = self.ATTACK_TYPE
 
       return self:running()
    end
@@ -289,12 +316,12 @@ function StartAttack(config)
 end
 
 function StartSmallAttack(config)
-   config.successAttackState = attackStates.WINDUP_MIN
+   config.successAttackState = ATTACK_STATE.WINDUP_MIN
    return StartAttack(config)
 end
 
 function StartFullAttack(config)
-   config.successAttackState = attackStates.WINDUP_MAX
+   config.successAttackState = ATTACK_STATE.WINDUP_MAX
    return StartAttack(config)
 end
 
@@ -303,7 +330,7 @@ BT.register('StartFullAttack', StartFullAttack)
 
 function HoldAttack(config)
    local hodl = function(self, state)
-      if state.attackState ~= attackStates.WINDUP_MAX then
+      if state.attackState ~= ATTACK_STATE.WINDUP_MAX then
          return self:fail()
       else
          state.attack = 1
@@ -330,7 +357,7 @@ function AttackHoldTimeout(config)
 
    config.shouldInterrupt = function(self, state)
       local now = core.getRealTime()
-      if not self.started and state.attackState == attackStates.WINDUP_MAX then
+      if not self.started and state.attackState == ATTACK_STATE.WINDUP_MAX then
          if not self.heldFrom then
             self.heldFrom = now
          end
@@ -358,7 +385,7 @@ BT.register("AttackHoldTimeout", AttackHoldTimeout)
 function ReleaseAttack(config)
    config.run = function(self, state)
       state.attack = 0
-      if state.attackState == attackStates.NO_STATE then
+      if state.attackState == ATTACK_STATE.NO_STATE then
          return self:success()
       end
    end
@@ -371,6 +398,15 @@ BT.register('ReleaseAttack', ReleaseAttack)
 function ChaseEnemy(config)
    config.findTargetActor = function(task, state)
       task.targetActor = state.enemyActor
+   end
+
+   config.getLookDirection = function(task, state)
+      if state.enemyActor then
+         local distanceVec = state.enemyActor.position - omwself.position
+         if distanceVec:length() < state.engageRange then
+            return distanceVec:normalize()
+         end
+      end
    end
 
    return ChaseTarget(config)
@@ -387,7 +423,7 @@ function RetreatToFriend(config)
          gutils.print("Looking at an actor " .. gameObject.recordId)
          if types.NPC.objectIsInstance(gameObject) then
             gutils.print("Is an npc " .. fightVal.modified)
-            if gameObject.recordId ~= "player" and fightVal.modified >= 60 then
+            if gameObject.recordId ~= "player" and fightVal.modified >= 30 then
                gutils.print("Found a fight-ready NPC, seeking their help! Actor is: " .. gameObject.recordId)
                task.targetActor = gameObject
                break
@@ -401,11 +437,34 @@ end
 
 BT.register("RetreatToFriend", RetreatToFriend)
 
+function LookAround(config)
+   local p = config.properties
+
+   config.start = function(task, state)
+      task.lastLookChange = 0
+      task.period = p.period()
+   end
+
+   config.run = function(task, state)
+      local now = core.getRealTime()
+
+      if now - task.lastLookChange > task.period then
+         task.lastLookChange = now
+         task.period = p.period()
+         task.lookDirection = gutils.randomDirection()
+      end
+
+      state.lookDirection = task.lookDirection
+      task:running()
+   end
+
+   return BT.Task:new(config)
+end
+
+BT.register("LookAround", LookAround)
+
 -- Parsing JSON behaviourtree -----
 ----------------------------------
-
-
-
 -- Read the behaviour tree JSON file exported from the editor---------------
 local file = vfs.open("scripts/MaxYari/experiments/OpenMW AI.b3")
 if not file then error("Failed opening behaviour tree file.") end
@@ -424,6 +483,7 @@ bTrees.Locomotion:setDebugLevel(0)
 
 
 -- Doing some inventory stuff --
+-- This should be used to give marksmen swords and send them into melee
 local inventory = selfActor.inventory()
 print("Inventory resolved:", inventory:isResolved())
 local weapons = inventory:getAll(types.Weapon)
@@ -441,41 +501,44 @@ for i, weaponObj in pairs(weapons) do
 end
 
 
-
-
-
 -- Main update function (finally) --
 ------------------------------------
 
 local function onUpdate(dt)
    -- Reset everything
    state:clear()
-   state.dt = dt
+
+   local aiOverride = false
 
    -- Ignore native ai behaviour if its a Combat behaviour
    local activeAiPackage = AI.getActivePackage()
    if activeAiPackage and activeAiPackage.type == "Combat" then
       -- Combat is completely handled by behaviour trees
-      omwself:enableAI(false)
+      aiOverride = true
    else
-      omwself:enableAI(true)
+      aiOverride = false
       if not activeAiPackage then
          print("No AI package :()")
       end
       return
    end
 
+   omwself:enableAI(not aiOverride)
+
+   -- Provide Behaviour Tree state with the necessary info
+   state.dt = dt
+
    local combatTarget = AI.getActiveTarget("Combat")
    state.enemyActor = combatTarget
 
-   -- Provide Behaviour Tree state with the necessary info
    if combatTarget then
       state.range = gutils.getDistanceToBounds(omwself, combatTarget)
    end
+
    local weaponObj = selfActor.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
    if weaponObj then
-      local weaponRecord = types.Weapon.record(weaponObj.recordId)
-      state.reach = weaponRecord.reach * fCombatDistance
+      state.weaponRecord = types.Weapon.record(weaponObj.recordId)
+      state.reach = state.weaponRecord.reach * fCombatDistance
    end
 
    -- Verify that attack animation matching the current attackGroup is still playing - if its not - probably it was interrupted - cleaning attack state.
@@ -483,7 +546,7 @@ local function onUpdate(dt)
       local animTime = anim.getCurrentTime(omwself, state.attackGroup)
       if not animTime then
          state.attackGroup = nil
-         state.attackState = attackStates.NO_STATE
+         state.attackState = ATTACK_STATE.NO_STATE
       end
    end
 
@@ -492,29 +555,23 @@ local function onUpdate(dt)
    bTrees["CombatAux"]:run()
    bTrees["Locomotion"]:run()
 
-
-   -- Apply the results of Behaviour Tree run to the actor
-   omwself.controls.run = state.run
-   if state.attackDirection then
-      gutils.print(state.attackDirection, "attack direction requested", state.attack, 2)
-      -- Attack task can request specific movement direction to execute specific attack
-      omwself.controls.sideMovement = state.attackDirection.x
-      omwself.controls.movement = state.attackDirection.y
-   else
+   if aiOverride then
+      -- Apply the results of Behaviour Tree run to the actor
+      omwself.controls.run = state.run
       omwself.controls.movement = state.movement
       omwself.controls.sideMovement = state.sideMovement
-   end
+      omwself.controls.use = state.attack
+      omwself.controls.jump = state.jump
 
-
-   omwself.controls.use = state.attack
-   omwself.controls.jump = state.jump
-
-   if not state.lookDirection and state.enemyActor then
-      state.lookDirection = state.enemyActor.position - omwself.position
-   end
-   if state.lookDirection then
-      omwself.controls.yawChange = gutils.lerpClamped(0,
-         -moveutils.lookRotation(omwself, omwself.position + state.lookDirection), dt * 3)
+      -- If no lookDirection provided - default behaviour
+      local lookDirection = state.lookDirection
+      if not lookDirection and state.enemyActor then
+         lookDirection = state.enemyActor.position - omwself.position
+      end
+      if lookDirection then
+         omwself.controls.yawChange = gutils.lerpClamped(0,
+            -moveutils.lookRotation(omwself, omwself.position + lookDirection), dt * 3)
+      end
    end
 end
 
@@ -530,33 +587,33 @@ I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    -- guess save the hit animation, then in onupdate check if its still playing, when hit is still playing - ignore speed stuff
 
    if string.find(key, "chop") or string.find(key, "thrust") or string.find(key, "slash") then
-      state.attackState = attackStates.WINDUP_START
+      state.attackState = ATTACK_STATE.WINDUP_START
       state.attackGroup = groupname
    end
 
    if string.find(key, "min attack") then
-      state.attackState = attackStates.WINDUP_MIN
+      state.attackState = ATTACK_STATE.WINDUP_MIN
    end
 
    if string.find(key, "max attack") then
       -- Attack is being held here, but this event will also trigger at the beginning of release
-      state.attackState = attackStates.WINDUP_MAX
+      state.attackState = ATTACK_STATE.WINDUP_MAX
       --print("Attack hold key time: " .. tostring(anim.getTextKeyTime(omwself.object, key)))
    end
 
    if string.find(key, "min hit") then
       --Changing state to release on min hit is good enough
-      state.attackState = attackStates.RELEASE_START
+      state.attackState = ATTACK_STATE.RELEASE_START
    elseif string.find(key, "hit") then
-      state.attackState = attackStates.RELEASE_HIT
+      state.attackState = ATTACK_STATE.RELEASE_HIT
    end
 
    if string.find(key, "follow start") then
-      state.attackState = attackStates.FOLLOW_START
+      state.attackState = ATTACK_STATE.FOLLOW_START
    end
 
    if string.find(key, "follow stop") then
-      state.attackState = attackStates.NO_STATE
+      state.attackState = ATTACK_STATE.NO_STATE
       state.attackGroup = nil
    end
 end)

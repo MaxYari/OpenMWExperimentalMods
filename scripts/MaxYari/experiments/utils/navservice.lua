@@ -270,9 +270,10 @@ local function NavigationService(config)
         self.lastDirection = desiredDirection
 
         -- adjusting and returning movement
+        local lookDirection = desiredDirection
         local speedMult, shouldRun = moveutils.calcSpeedMult(opts.desiredSpeed, self.walkSpeed, self.runSpeed)
 
-        return movement * speedMult, sideMovement * speedMult, shouldRun
+        return movement * speedMult, sideMovement * speedMult, shouldRun, lookDirection
     end
 
     ----------------------------------------------------------------------------------------

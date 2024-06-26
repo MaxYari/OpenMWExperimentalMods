@@ -140,29 +140,13 @@ local function cache(fn, delay)
 end
 module.cache = cache
 
--- Function to find a point on the circle's circumference
--- Author: ChatGPT
-local function pointOnCircle(center, radius, start, distance, direction)
-    -- Calculate the angle from the center to the starting point
-    local dx = start.x - center.x
-    local dy = start.y - center.y
-    local startAngle = math.atan2(dy, dx)
 
-    -- Calculate the angle to travel along the circumference
-    local travelAngle = distance / radius
-
-    -- Calculate the new angle
-    local newAngle = startAngle + (travelAngle * direction)
-
-    -- Compute the new point on the circle
-    local newPoint = {
-        x = center.x + radius * math.cos(newAngle),
-        y = center.y + radius * math.sin(newAngle)
-    }
-
-    return newPoint
+local function randomDirection()
+    -- Author: ChatGPT 2024
+    local angle = math.random() * 2 * math.pi
+    return util.vector3(math.cos(angle), math.sin(angle), 0)
 end
-module.pointOnCircle = pointOnCircle
+module.randomDirection = randomDirection
 
 local function minHorizontalHalfSize(bounds)
     return math.abs(math.min(bounds.halfExtents.x, bounds.halfExtents.y))
@@ -211,6 +195,72 @@ local Actor = {
 }
 
 module.Actor = Actor
+
+local function getSortedAttackTypes(weaponRecord)
+    -- Author: ChatGPT 2024
+    local attacks = {
+        { type = "Chop",   averageDamage = (weaponRecord.chopMinDamage + weaponRecord.chopMaxDamage) / 2 },
+        { type = "Slash",  averageDamage = (weaponRecord.slashMinDamage + weaponRecord.slashMaxDamage) / 2 },
+        { type = "Thrust", averageDamage = (weaponRecord.thrustMinDamage + weaponRecord.thrustMaxDamage) / 2 }
+    }
+
+    table.sort(attacks, function(a, b) return a.averageDamage > b.averageDamage end)
+
+    return attacks
+end
+
+module.getSortedAttackTypes = getSortedAttackTypes
+
+local function getGoodAttacks(attacks)
+    local bestAttack = attacks[1]
+    local goodAttacks = { bestAttack.type } -- Start with the best attack
+
+    local threshold = 0.33                  -- Threshold for damage difference
+
+    for i = 2, #attacks do
+        local currentAttack = attacks[i]
+        local percentageDifference = math.abs(currentAttack.averageDamage - bestAttack.averageDamage) /
+            bestAttack.averageDamage
+
+        if percentageDifference <= threshold then
+            table.insert(goodAttacks, currentAttack.type)
+        else
+            break -- No need to check further since attacks are sorted by averageDamage
+        end
+    end
+
+    return goodAttacks
+end
+
+module.getGoodAttacks = getGoodAttacks
+
+local function pickWeightedRandomAttackType(attacks)
+    -- Author: ChatGPT 2024
+    local totalAverageDamage = 0
+    for _, attack in ipairs(attacks) do
+        totalAverageDamage = totalAverageDamage + attack.averageDamage
+    end
+
+    local rand = math.random() * totalAverageDamage
+    local cumulativeProbability = 0
+
+    for _, attack in ipairs(attacks) do
+        cumulativeProbability = cumulativeProbability + attack.averageDamage
+        if rand <= cumulativeProbability then
+            return attack.type
+        end
+    end
+
+    return attacks[1].type
+end
+
+module.pickWeightedRandomAttackType = pickWeightedRandomAttackType
+
+local function getWeaponSkill(weaponRecord)
+    return 50
+end
+
+module.getWeaponSkill = getWeaponSkill
 
 
 return module

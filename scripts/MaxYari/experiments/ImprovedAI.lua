@@ -547,10 +547,7 @@ function RetreatBreaker(config)
       end
 
       if not warmupComplete then
-         print("Warmup not complete")
          return false
-      else
-         print("Warmup complete")
       end
 
       local currentHealth = selfActor.stats.dynamic.health().current
@@ -558,7 +555,6 @@ function RetreatBreaker(config)
       local damage = lastHealth - currentHealth
       if damage < 0 then damage = 0 end
 
-      print("damage check")
       -- Check if enough damage was taken
       if damage > 0 then
          -- Calculate damage threshold percentage
@@ -570,8 +566,6 @@ function RetreatBreaker(config)
 
          -- Convert dmgProbability from 0-100 range to 0-1 range and clamp it
          adjustedProbability = adjustedProbability / 100
-
-         print("Probability to break retreat with damage percentage:" .. damagePercentage .. " " .. adjustedProbability)
 
          -- Check if enemy is close enough
          local distance = gutils.getDistanceToBounds(omwself, state.enemyActor)
@@ -751,6 +745,10 @@ end
 BT.register("SetCombatState", SetCombatState)
 
 local animationConfigs = {
+   stand_ground_idle = {
+      groupname = { "standgroundidle1", "standgroundidle2", "standgroundidle3", "standgroundidle4" },
+      priority = animation.PRIORITY.Hit
+   },
    surrender_mercy = {
       groupname = "surrender",
       startkey = "start",
@@ -772,26 +770,11 @@ local animationConfigs = {
    }
 }
 
-function StartAnimation(config)
-   local p = config.properties
-
-   config.start = function(task, state)
-      local configId = p.animation()
-      local animConfig = assert(animationConfigs[configId], "No animation config " .. tostring(configId) .. " found.")
-
-      animService.Animation:play(animConfig.groupname, animConfig)
-      task:success()
-   end
-
-   return BT.Task:new(config)
-end
-
-BT.register("StartAnimation", StartAnimation)
-
 function OnAnimationKey(config)
    local p = config.properties
    local configId = p.animation()
    local animConfig = assert(animationConfigs[configId], "No animation config " .. tostring(configId) .. " found.")
+   local groupname
 
    local shouldStart = false
 
@@ -803,6 +786,11 @@ function OnAnimationKey(config)
 
    config.registered = function(task, state)
       shouldStart = false
+      groupname = animConfig.groupname
+      if type(groupname) == "table" then
+         error("List animation groupnames are not supported in a " ..
+            config.name .. " node.")
+      end
       animService.addOnKeyHandler(onKey)
    end
 
@@ -823,61 +811,19 @@ end
 
 BT.register("OnAnimationKey", OnAnimationKey)
 
-function OnAnimationOver(config)
-   local p = config.properties
-   local configId = p.animation()
-   local animConfig = assert(animationConfigs[configId], "No animation config " .. tostring(configId) .. " found.")
-
-   p.key = function()
-      return animConfig.stopkey
-   end
-
-   return OnAnimationKey(config)
-end
-
-BT.register("OnAnimationOver", OnAnimationOver)
-
-function OnAnimationInterrupt(config)
-   local p = config.properties
-   local configId = p.animation()
-   local animConfig = assert(animationConfigs[configId], "No animation config " .. tostring(configId) .. " found.")
-
-   local lastCompletion = nil
-   local shouldStart = false
-
-   config.registered = function()
-      shouldStart = false
-   end
-
-   config.shouldRun = function()
-      if shouldStart then return true end
-
-      local completion = animation.getCompletion(omwself, animConfig.groupname)
-      if lastCompletion ~= nil and completion == nil and lastCompletion < 0.9 then
-         shouldStart = true
-      end
-
-      lastCompletion = completion
-   end
-
-   config.finish = function()
-      shouldStart = false
-   end
-
-   return BT.InterruptDecorator:new(config)
-end
-
-BT.register("OnAnimationInterrupt", OnAnimationInterrupt)
 
 function PlayAnimation(config)
    local p = config.properties
    local configId = p.animation()
    local animConfig = assert(animationConfigs[configId], "No animation config " .. tostring(configId) .. " found.")
+   local groupname
 
    local lastCompletion = nil
 
    config.start = function(task, state)
-      task.anim = animService.Animation:play(animConfig.groupname, animConfig)
+      groupname = animConfig.groupname
+      if type(groupname) == "table" then groupname = groupname[math.random(1, #groupname)] end
+      task.anim = animService.Animation:play(groupname, animConfig)
       task.anim.onKey = function(key)
          if key == animConfig.stopkey then task.shouldSucceed = true end
       end
@@ -887,9 +833,16 @@ function PlayAnimation(config)
       if task.shouldSucceed then return task:success() end
 
       -- Often even arrives too late and in breaks with completion clause
-      local completion = animation.getCompletion(omwself, animConfig.groupname)
+      local completion = animation.getCompletion(omwself, groupname)
+      print(completion)
       if lastCompletion ~= nil and completion == nil then
-         return task:fail()
+         if lastCompletion > 0.9 then
+            -- Completion status will be different at different framerates, an edgecase where this be considered
+            -- a fail although it properly completed - is quite possible
+            return task:success()
+         else
+            return task:fail()
+         end
       end
       lastCompletion = completion
 
@@ -897,13 +850,14 @@ function PlayAnimation(config)
    end
 
    config.finish = function(task, state)
-      animation.cancel(omwself, animConfig.groupname)
+      animation.cancel(omwself, groupname)
    end
 
    return BT.Task:new(config)
 end
 
 BT.register("PlayAnimation", PlayAnimation)
+
 
 function DumpInventory(config)
    config.start = function(task)
@@ -915,6 +869,7 @@ function DumpInventory(config)
 end
 
 BT.register("DumpInventory", DumpInventory)
+
 
 function HasDumpableItems(config)
    config.start = function(task)
@@ -951,34 +906,65 @@ BT.register("Pacify", Pacify)
 -- Intruder
 -- Thief
 
+local customVoiceRecords = {
+   go_away = {
+      infos = {
+         {
+            race = "nord",
+            gender = "female",
+            text = "Go away!",
+            file = "lol"
+         },
+         {
+            race = "nord",
+            gender = "female",
+            text = "We dont like folk like you here!",
+            file = "lol1"
+         },
+      }
+   },
+   flee_to_friends = {
+      infos = {
+         {
+            race = "nord",
+            gender = "female",
+            text = "Screw you! HEEEEEEELP!",
+            file = "lol"
+         }
+      }
+   }
+}
+
 function Say(config)
    local p = config.properties
+   local npc = types.NPC.record(omwself)
+   local gender = "female"
+   if npc.isMale then gender = "male" end
+
+   local function filterInfos(infos)
+      local fittingInfos = {}
+      for idx, voiceInfo in pairs(infos) do
+         -- Need to also filter by enemy race and also accept those that are nil?
+         if voiceInfo.filterActorRace == npc.race and voiceInfo.filterActorGender == gender then
+            table.insert(fittingInfos, voiceInfo)
+         end
+      end
+      return fittingInfos
+   end
 
    config.start = function(task)
-      local npc = types.NPC.record(omwself)
-      local gender = "female"
-      if npc.isMale then gender = "male" end
-
       local recordType = p.recordType()
       local records = core.dialogue.voice.records[recordType]
+      local customRecords = customVoiceRecords[recordType]
 
-      local fittingInfos = {}
-
-      if records then
-         for idx, voiceInfo in pairs(records.infos) do
-            -- Need to also filter by enemy race and also accept those that are nil?
-            if voiceInfo.filterActorRace == npc.race and voiceInfo.filterActorGender == gender then
-               table.insert(fittingInfos, voiceInfo)
-            end
-         end
-      else
-         task:fail()
-         error("Voice record " .. recordType .. " doesn't exist.")
-      end
+      local fittingInfos
+      if customRecords then fittingInfos = filterInfos(customRecords.infos) end
+      if #fittingInfos == 0 and records then fittingInfos = filterInfos(records.infos) end
 
       if #fittingInfos == 0 then
          task:fail()
-         error("Some voice records were found for " .. recordType .. " but none of them fit character race and gender.")
+         gutils.print(
+            "WARNING: No voice records of type " .. recordType .. " were found for to fit character race and gender.", 0)
       end
 
       -- Pick random voice file
@@ -1030,6 +1016,7 @@ local function randomiseInclinations()
       state.weirdnessStatus = "completely normal, not weird at all."
    end
 
+   -- Purely for testing purposes
    state.combatState = COMBAT_STATE.MERCY
 
    -- Print the modified state for verification

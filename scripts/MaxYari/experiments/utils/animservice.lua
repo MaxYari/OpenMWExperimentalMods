@@ -89,7 +89,6 @@ local module = {
     run = function()
         for cb, anim in pairs(cbRegistry) do
             if type(anim) == "table" and not anim:isPlaying() then
-                print("Animation", anim.groupname, "is not playing anymore, destroying.")
                 anim:destroy()
             end
         end

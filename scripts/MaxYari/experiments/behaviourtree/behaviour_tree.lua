@@ -211,7 +211,7 @@ function BehaviourTree:run()
     end
   end
 
-  self:print("Running all active nodes:")
+  --self:print("Running all active nodes:")
   for _, node in pairs(self.activeNodes) do
     if node.finished then
       error(
@@ -219,7 +219,7 @@ function BehaviourTree:run()
         node.name .. " is already finished, but an attempt to run it was detected. This should never happen. A bug?",
         2)
     end
-    self:print(node.name)
+    --self:print(node.name)
     node:run()
   end
 end

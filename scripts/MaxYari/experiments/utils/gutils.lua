@@ -3,6 +3,7 @@ local types = require('openmw.types')
 local util = require('openmw.util')
 
 
+
 -- Generic utility functions --
 
 local module = {}
@@ -21,11 +22,24 @@ local function uprint(...)
         for i, v in ipairs(args) do
             args[i] = tostring(v)
         end
-        print("[AI+ DEBUG]:", table.concat(args, " "))
+        print("[Mercy]:", table.concat(args, " "))
     end
 end
+module.print = uprint
 
-module.print      = uprint
+local function tableToString(tbl, indent)
+    indent = indent or "  "
+    local result = { "\n===> " .. tostring(tbl) .. " <===" }
+
+    for key, value in pairs(tbl) do
+        local keyStr = tostring(key)
+        local valueStr = tostring(value)
+        table.insert(result, indent .. keyStr .. ": " .. valueStr)
+    end
+
+    return table.concat(result, "\n")
+end
+module.tableToString = tableToString
 
 -- A sampler that retains samples within specified time window and calculates their mean value
 -- Author: mostly ChatGPT
@@ -85,6 +99,21 @@ end
 
 module.MeanSampler = MeanSampler
 
+local function shallowTableCopy(orig)
+    local orig_type = type(orig)
+    local copy
+    if orig_type == 'table' then
+        copy = {}
+        for orig_key, orig_value in pairs(orig) do
+            copy[orig_key] = orig_value
+        end
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
+end
+module.shallowTableCopy = shallowTableCopy
+
 local PosToVelSampler = {
     new = function(self, time_window)
         self.positionSampler = MeanSampler:new(time_window)
@@ -107,10 +136,18 @@ local PosToVelSampler = {
         return self.velocitySampler.mean
     end
 }
-
 module.PosToVelSampler = PosToVelSampler
 
-
+-- Function that mimics a ternary operator
+-- Author: ChatGPT 2024
+local function ternary(condition, if_true, if_false)
+    if condition then
+        return if_true
+    else
+        return if_false
+    end
+end
+module.ternary = ternary
 
 local function findField(dictionary, value)
     for field, val in pairs(dictionary) do
@@ -158,6 +195,12 @@ local function diagonalFlatHalfSize(bounds)
 end
 module.diagonalFlatHalfSize = diagonalFlatHalfSize
 
+local function getActorLookRayPos(actor)
+    local bounds = types.Actor.getPathfindingAgentBounds(actor)
+    return actor.position + util.vector3(0, 0, bounds.halfExtents.z * 0.75)
+end
+module.getActorLookRayPos = getActorLookRayPos
+
 local function getDistanceToBounds(actor, target)
     local dist = (target.position - actor.position):length() -
         types.Actor.getPathfindingAgentBounds(target).halfExtents.y -
@@ -177,45 +220,86 @@ local function lerpClamped(a, b, t)
 end
 module.lerpClamped = lerpClamped
 
-local Actor = {
-    _mt = {
-        __index = function(instance, key)
-            return function(...)
-                return types.Actor[key](instance.gameObject, ...)
-            end
+
+
+local Actor = {}
+local ActorMT = {}
+
+function Actor:new(go, omwClass)
+    if not omwClass then omwClass = types.Actor end
+    local instance = {
+        gameObject = go,
+        omwClass = omwClass
+    }
+    setmetatable(instance, ActorMT)
+    return instance
+end
+
+function ActorMT:__index(key)
+    if self.omwClass == types.Actor then
+        if Actor[key] then return Actor[key] end
+    end
+
+    local value = self.omwClass[key]
+    if type(value) == "function" then
+        return function(...)
+            return value(self.gameObject, ...)
         end
-    },
-    new = function(self, go)
-        local instance = {
-            gameObject = go
-        }
-        setmetatable(instance, self._mt)
-        return instance
-    end,
-}
+    elseif type(value) == "table" or type(value) == "userdata" then
+        return Actor:new(self.gameObject, value)
+    else
+        return value
+    end
+end
+
+function Actor:getDumpableInventoryItems()
+    -- data.actor, data.position
+    local items = {}
+    local actor = self
+    local inventory = actor.inventory()
+    --print("Inventory resolved:", inventory:isResolved())
+    local invItems = inventory:getAll()
+
+    for i, item in pairs(invItems) do
+        if types.Armor.objectIsInstance(item) or types.Clothing.objectIsInstance(item) then goto continue end
+        table.insert(items, item)
+        ::continue::
+    end
+
+    return items
+end
 
 module.Actor = Actor
 
 local function getSortedAttackTypes(weaponRecord)
-    -- Author: ChatGPT 2024
-    local attacks = {
-        { type = "Chop",   averageDamage = (weaponRecord.chopMinDamage + weaponRecord.chopMaxDamage) / 2 },
-        { type = "Slash",  averageDamage = (weaponRecord.slashMinDamage + weaponRecord.slashMaxDamage) / 2 },
-        { type = "Thrust", averageDamage = (weaponRecord.thrustMinDamage + weaponRecord.thrustMaxDamage) / 2 }
-    }
+    if weaponRecord then
+        local attacks = {
+            { type = "Chop",   averageDamage = (weaponRecord.chopMinDamage + weaponRecord.chopMaxDamage) / 2 },
+            { type = "Slash",  averageDamage = (weaponRecord.slashMinDamage + weaponRecord.slashMaxDamage) / 2 },
+            { type = "Thrust", averageDamage = (weaponRecord.thrustMinDamage + weaponRecord.thrustMaxDamage) / 2 }
+        }
 
-    table.sort(attacks, function(a, b) return a.averageDamage > b.averageDamage end)
+        table.sort(attacks, function(a, b) return a.averageDamage > b.averageDamage end)
 
-    return attacks
+        return attacks
+    else
+        -- Assume this is hand-to-hand
+        local attacks = {
+            { type = "Chop",   averageDamage = 1 },
+            { type = "Slash",  averageDamage = 1 },
+            { type = "Thrust", averageDamage = 1 }
+        }
+        return attacks
+    end
 end
 
 module.getSortedAttackTypes = getSortedAttackTypes
 
 local function getGoodAttacks(attacks)
     local bestAttack = attacks[1]
-    local goodAttacks = { bestAttack.type } -- Start with the best attack
+    local goodAttacks = { bestAttack } -- Start with the best attack
 
-    local threshold = 0.33                  -- Threshold for damage difference
+    local threshold = 0.33             -- Threshold for damage difference
 
     for i = 2, #attacks do
         local currentAttack = attacks[i]
@@ -223,7 +307,7 @@ local function getGoodAttacks(attacks)
             bestAttack.averageDamage
 
         if percentageDifference <= threshold then
-            table.insert(goodAttacks, currentAttack.type)
+            table.insert(goodAttacks, currentAttack)
         else
             break -- No need to check further since attacks are sorted by averageDamage
         end
@@ -247,20 +331,13 @@ local function pickWeightedRandomAttackType(attacks)
     for _, attack in ipairs(attacks) do
         cumulativeProbability = cumulativeProbability + attack.averageDamage
         if rand <= cumulativeProbability then
-            return attack.type
+            return attack
         end
     end
 
-    return attacks[1].type
+    return attacks[1]
 end
 
 module.pickWeightedRandomAttackType = pickWeightedRandomAttackType
-
-local function getWeaponSkill(weaponRecord)
-    return 50
-end
-
-module.getWeaponSkill = getWeaponSkill
-
 
 return module

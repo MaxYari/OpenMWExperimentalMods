@@ -47,4 +47,26 @@ local function calcSpeedMult(desiredSpeed, walkSpeed, runSpeed)
 end
 module.calcSpeedMult = calcSpeedMult
 
+local function directionRelativeToVec(vec, directionStr)
+    local vec2D = util.vector2(vec.x, vec.y)
+    local directionMult
+    if directionStr == "forward" then
+        directionMult = 0
+    elseif directionStr == "left" then
+        directionMult = 1
+    elseif directionStr == "right" then
+        directionMult = -1
+    elseif directionStr == "back" then
+        directionMult = 2
+    else
+        error("Wrong direction property passed into directionRelativeToVec. Direction: " .. tostring(directionStr), 2)
+    end
+
+    local moveDir2D = vec2D:rotate(directionMult * math.pi / 2)
+    local moveDir3D = util.vector3(moveDir2D.x, moveDir2D.y, 0):normalize()
+
+    return moveDir3D
+end
+module.directionRelativeToVec = directionRelativeToVec
+
 return module

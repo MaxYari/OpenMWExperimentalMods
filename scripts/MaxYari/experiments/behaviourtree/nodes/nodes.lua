@@ -7,12 +7,18 @@ local InterruptDecorator = require(_PACKAGE .. '/node_types/interrupt_decorator'
 local g                  = _BehaviourTreeGlobals
 
 
+local function RunRandomWeight(config)
+    local p = config.properties
+
+    return Decorator:new(config)
+end
+
 local function RandomThrough(config)
     local p = config.properties
 
-    config.start = function(self, state)
+    config.start = function(task, state)
         if math.random() * 100 > p.probability() then
-            self:fail()
+            task:fail()
         end
     end
 
@@ -22,9 +28,9 @@ end
 local function StateCondition(config)
     local p = config.properties
 
-    config.start = function(self, state)
+    config.start = function(task, state)
         if not p.condition() then
-            self:fail()
+            task:fail()
         end
     end
 
@@ -34,17 +40,8 @@ end
 local function StateInterrupt(config)
     local p = config.properties
 
-    config.shouldInterrupt = function(self, state)
-        local resp = not self.started and p.condition()
-        return resp
-    end
-
-    config.start = function(self, state)
-        self.started = true
-    end
-
-    config.finish = function(self, state)
-        self.started = false
+    config.shouldRun = function(task, state)
+        return p.condition()
     end
 
     return InterruptDecorator:new(config)
@@ -56,22 +53,18 @@ local function ContinuousStateCondition(config)
     -- Will not be ignored by branch nodes (Sequence, Priority e.t.c), branch node will be able to trigger it as any other regular node.
     config.isStealthy = false
 
-    config.shouldInterrupt = function(self, state)
-        local resp = self.started and not p.condition() -- Only interrupt itself, and only when condition is false
-        -- If interrupted execution will bounce back to start(), where fail will be reported
-        return resp
+    config.shouldRun = function(task, state)
+        if not task.started then return false end
+        -- Only interrupt itself, and only when condition is false
+        return p.condition()
     end
 
-    config.start = function(self, state)
-        if p.condition() then
-            self.started = true
-        else
-            self:fail()
-        end
+    config.start = function(task, state)
+        task.started = true
     end
 
-    config.triggered = function(self, state)
-        self:fail() -- Refuse to execute after interrupt is triggered, otherwise the node will start. But for this one it was already running and we only want to escape.
+    config.finish = function(task, state)
+        task.started = false
     end
 
     return InterruptDecorator:new(config)
@@ -82,30 +75,25 @@ local function LimitRunTime(config)
     local p = config.properties
     local timer = config.clock or g.clock
 
-    local duration = 0
-    local wasTriggered = false
-
     config.isStealthy = false
 
-    config.start = function(self, state)
-        self.duration = p.duration()
-        self.startedAt = timer()
-        self.started = true
-    end
-
-    config.shouldInterrupt = function(self, state)
-        if self.started and ((timer() - self.startedAt) > self.duration) then
-            return true
+    config.start = function(task, state)
+        task.duration = p.duration()
+        if type(task.duration) ~= "number" then
+            error("duration() provided to LimitRunTime does not return a number. Return value type: " ..
+                type(task.duration))
         end
+        task.startedAt = timer()
+        task.started = true
     end
 
-    -- Upon self-interrupt a following sequence of events will attempt to playout: [Current Task]finish()--[Interrupt]triggered()--[Interrupt]start()--...
-    -- But in the case of this interrupt node - "Current Task" and "Interrupt" are the same node/task, since we are using interrupt to break out of itself.
-    -- Naturally we have no interest in starting again after this task broke out of itself, so to finish breaking out - we can fail() in triggered().
-    -- It is also possible to fail() in start(), but then we will have difficulties distinguishing between a start() after an interrupt and a natural start() due
-    -- to the execution flow reaching the node. In some nodes this distinction will not matter, in this node - it does, hence it's much simpler to break out in triggered().
-    config.triggered = function(self, state)
-        self:fail()
+    config.shouldRun = function(task, state)
+        if not task.started then return false end
+        return (timer() - task.startedAt) < task.duration
+    end
+
+    config.finish = function(task)
+        task.started = false
     end
 
     return InterruptDecorator:new(config)
@@ -132,29 +120,30 @@ end
 local function Cooldown(config)
     -- Also - how can we add a cooldown for an interrupt, without triggering an interrup?
     local p = config.properties
+
     local timer = config.clock or g.clock
     local lastUseTime = nil
     local duration = nil
 
 
-    config.start = function(self, state)
+    config.start = function(task, state)
         if not duration then duration = p.duration() end
 
         local now = timer()
-        self.gotThrough = false
+        task.gotThrough = false
 
         if not lastUseTime or now - lastUseTime > duration then
             lastUseTime = now
             duration = p.duration()
-            self.gotThrough = true
+            task.gotThrough = true
         else
-            return self:fail()
+            return task:fail()
         end
     end
 
-    config.finish = function(self, state)
+    config.finish = function(task, state)
         -- Rejecting is also finished, so this will be forever locked
-        if self.gotThrough and p.hotWhileRunning() then
+        if task.gotThrough and p.hotWhileRunning() then
             lastUseTime = timer()
         end
     end
@@ -166,11 +155,11 @@ end
 local function SetState(config)
     local p = config.properties
 
-    config.start = function(self, state)
+    config.start = function(task, state)
         for key, val in pairs(p) do
             state[key] = val()
         end
-        return self:success()
+        return task:success()
     end
 
     return Task:new(config)
@@ -178,16 +167,16 @@ end
 
 
 local function Succeeder(config)
-    config.run = function(self, state)
-        self:success()
+    config.run = function(task, state)
+        task:success()
     end
     return Task:new(config)
 end
 
 
 local function Failer(config)
-    config.run = function(self, state)
-        self:fail()
+    config.run = function(task, state)
+        task:fail()
     end
     return Task:new(config)
 end
@@ -209,8 +198,8 @@ function RandomSuccess(config)
 end
 
 local function Runner(config)
-    config.run = function(self, state)
-        self:running()
+    config.run = function(task, state)
+        task:running()
     end
     return Task:new(config)
 end
@@ -238,6 +227,7 @@ end
 
 
 local function registerPremadeNodes(reg)
+    reg.register("RunRandomWeight", RunRandomWeight)
     reg.register("RandomThrough", RandomThrough)
     reg.register("StateCondition", StateCondition)
     reg.register("StateInterrupt", StateInterrupt)

@@ -13,12 +13,36 @@ end
 
 function RepeaterDecorator:start()
   self.currentLoop = 1
+  self.nodeStartFrameNumber = self.tree.frameNumber
 
   if self.maxLoop == nil then self.maxLoop = -1 end
   if self.p.maxLoop then self.maxLoop = self.p.maxLoop() end
   if type(self.maxLoop) ~= "number" then error("REPEATER maxLoop property resolved in a non-numeric value.") end
 
   Decorator.start(self)
+end
+
+function RepeaterDecorator:tryRestartChild()
+  if self.tree.frameNumber > self.nodeStartFrameNumber then
+    self.nodeStartFrameNumber = self.tree.frameNumber
+    self.childNode:start()
+  else
+    -- We finished same frame we started, to prevent infinite loop delay childNode start until the next run()
+    self.tree:print((self.name or self.name or "NONAME_NODE") ..
+      ' REPEAT DELAYED until the next frame to avoid stack overflow.')
+    self.delayChildStart = true
+    self.tree:setActiveNode(self)
+  end
+end
+
+function RepeaterDecorator:run()
+  Decorator.run(self)
+  if self.delayChildStart then
+    self.delayChildStart = false
+    self:tryRestartChild()
+  else
+    error("Repeater run() was triggered without 'delayChildStart'. This should never happen!")
+  end
 end
 
 function RepeaterDecorator:success()
@@ -36,9 +60,7 @@ function RepeaterDecorator:success()
     end
   else
     self.tree:print((self.name or self.name or "NONAME_NODE") .. ' REPEAT')
-    self.childNode:start()
-
-    return Decorator.running(self)
+    self:tryRestartChild()
   end
 end
 
@@ -57,9 +79,7 @@ function RepeaterDecorator:fail()
     end
   else
     self.tree:print((self.name or self.name or "NONAME_NODE") .. ' REPEAT')
-    self.childNode:start(self.stateObject)
-
-    return Decorator.running(self)
+    self:tryRestartChild()
   end
 end
 

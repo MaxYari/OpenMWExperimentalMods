@@ -5,11 +5,13 @@ local g        = _BehaviourTreeGlobals
 
 local state = nil
 
-local function tryStrToBool(str)
+local function tryStrToOtherType(str)
     if str == "true" then
         return true
     elseif str == "false" then
         return false
+    elseif str == "nil" then
+        return nil
     else
         return str
     end
@@ -18,17 +20,20 @@ end
 local function ParsePropertyValue(val, config)
     if type(val) == "string" and string.find(val, "%$") then
         -- state object reference found, parsing as a lua expression
-        local cleanValue = string.gsub(val, "%$", "")
-        local fn, err = g.loadCodeInScope("return " .. cleanValue, state)
+        val = val:gsub("%$:", "_s:")
+        val = val:gsub("%$%.", "_s.")
+        val = val:gsub("%$(%a)", "_s.%1")
+
+        local fn, err = g.loadCodeInScope("return " .. val, { _s = state })
         if err then
-            print("Can not parse " .. config.name .. " value: " .. cleanValue)
+            print("Can not parse " .. config.name .. " value: " .. val)
         end
         if not fn then
             error("Somehow property value parser returned a nil function. This shouldn't happen.")
         end
         return fn
     else
-        val = tryStrToBool(val)
+        val = tryStrToOtherType(val)
         return function()
             return val
         end

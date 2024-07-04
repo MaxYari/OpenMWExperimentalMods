@@ -24,7 +24,8 @@ function Decorator:start()
 
   --The only child is an interrupt (or another node) that doesnt want to be called directly, so can't do much of anything here but fail
   if self.childNode.isStealthy then
-    return self:fail()
+    error("Stealthy interrupt (node: " ..
+      self.childNode.name .. ") can not be a direct child of a decorator (node: " .. self.name .. ")")
   end
 
   self.childNode:start()
@@ -42,7 +43,9 @@ end
 
 function Decorator:finish()
   -- Deregister interrupts on the level below
-  self.tree:deregisterInterrupts(self.level + 1)
+  if self.childNode.isInterrupt then
+    self.tree:deregisterInterrupt(self.childNode)
+  end
   Node.finish(self)
 end
 

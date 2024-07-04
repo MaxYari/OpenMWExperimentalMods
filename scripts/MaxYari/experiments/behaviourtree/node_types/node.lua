@@ -8,7 +8,8 @@ function Node:initialize(config)
   if not config.properties then config.properties = {} end
   self.properties = self._initData.properties
   self.p = self.properties
-  self.name = self._initData.name
+  self.name = self._initData.name or "NoName"
+  self.finished = true
 end
 
 -- All the node:fn functions can be overriden in child classes to implement new node types. If you want to call the
@@ -19,9 +20,9 @@ function Node:initApiObject()
     start = function(self, stateObject) end,
     run = function(self, stateObject) end,
     finish = function(self, stateObject) end,
-    shouldInterrupt = function(self, stateObject) end, --Interrupts only
-    registered = function(self, stateObject) end,      --Interrupts only
-    triggered = function(self, stateObject) end,       --Interrupts only
+    shouldRun = function(self, stateObject) end,    --Interrupts only
+    registered = function(self, stateObject) end,   --Interrupts only
+    deregistered = function(self, stateObject) end, --Interrupts only
   }
 
   for k, v in pairs(self._initData) do
@@ -36,6 +37,7 @@ function Node:registerApiStatusFunctions()
 end
 
 function Node:deregisterApiStatusFunctions()
+  if not self.api then return end
   self.api.success = nil
   self.api.fail = nil
   self.api.running = nil
@@ -67,18 +69,17 @@ end
 
 -- TASK STATUSES - triggered by the module user, bubble up from childrent to parents
 function Node:running()
+  if self.finished then
+    error("'Running' status was reported on a node after the node was finished. Either an API misuse or a bug.", 2)
+  end
   self.tree:printLazy(self.name .. " RUNNING")
 end
 
 function Node:success()
-  self.tree:print((self.name or "NONAME_NODE") .. ' SUCCESS')
-
   if self.finished then
-    error(
-      tostring(self.name) ..
-      " node error. Success state was called after node was finished. This should never happen, the node was probably not implemented properly.",
-      2)
+    error("'Success' status was reported on a node after the node was finished. Either an API misuse or a bug.", 2)
   end
+  self.tree:print(self.name .. ' SUCCESS')
 
   self:finish()
   if self.parentNode then
@@ -87,7 +88,10 @@ function Node:success()
 end
 
 function Node:fail()
-  self.tree:print((self.name or "NONAME_NODE") .. ' FAIL')
+  if self.finished then
+    error("'Fail' status was reported on a node after the node was finished. Either an API misuse or a bug.", 2)
+  end
+  self.tree:print(self.name .. ' FAIL')
 
   if self.finished then
     error(
@@ -104,10 +108,12 @@ end
 
 -- Finish is not a task status and shouldn't be used as such, it should only be used for a final cleanup, never to report a status.
 function Node:finish()
-  self.tree:print((self.name or "NONAME_NODE") .. ' FINISH')
+  self.tree:print((self.name or "NONAME_NODE") .. ' FINISH', 2)
 
   self:deregisterApiStatusFunctions()
   self.finished = true
+  self.tree:removeActiveNode(self)
+
   self.api:finish(self.tree.stateObject)
 end
 

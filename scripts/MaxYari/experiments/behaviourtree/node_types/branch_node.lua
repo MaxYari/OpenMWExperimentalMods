@@ -50,8 +50,12 @@ function BranchNode:abort()
 end
 
 function BranchNode:finish()
-  -- Deregister interrupts on the level below
-  self.tree:deregisterInterrupts(self.level + 1)
+  -- Deregister interrupts
+  for i, node in pairs(self.childNodes) do
+    if node.isInterrupt then
+      self.tree:deregisterInterrupt(node)
+    end
+  end
   Node.finish(self)
 end
 

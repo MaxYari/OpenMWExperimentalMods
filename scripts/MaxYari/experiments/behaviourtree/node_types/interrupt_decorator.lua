@@ -20,30 +20,31 @@ end
 
 function InterruptDecorator:deregistered()
   self.tree:print(self.name .. " INTERRUPT DE-REGISTERED")
+
+  self.api:deregistered(self.tree.stateObject)
 end
 
 -- Will be called by the tree root every tree run
-function InterruptDecorator:shouldInterrupt()
-  local should = self.api:shouldInterrupt(self.tree.stateObject)
+function InterruptDecorator:shouldRun()
+  local should = self.api:shouldRun(self.tree.stateObject)
   return should
 end
 
-function InterruptDecorator:doInterrupt()
-  self.tree:print(self.name .. " INTERRUPT TRIGGERED")
+function InterruptDecorator:interruptOthers()
+  self.tree:print(self.name .. " INTERRUPTED another branch.")
   -- in case parent is a branch_node - should notify it that the child is different now
   if self.parentNode and self.parentNode.childSwitch then
     self.parentNode:childSwitch(self)
   end
 
-  self:registerApiStatusFunctions()
-  self.finished = false
-  self.api:triggered(self.tree.stateObject)
-
-  --Its possible that .triggered resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
-  --already done, since finished flag is set after that
-  if self.finished then return end
-
   self:start()
+end
+
+function InterruptDecorator:interruptSelf()
+  self.tree:print(self.name .. " INTERRUPTED self.")
+
+  self.childNode:abort()
+  self:fail()
 end
 
 return InterruptDecorator

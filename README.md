@@ -1,6 +1,6 @@
 <img width="385" alt="image" src="https://github.com/MaxYari/OpenMWExperimentalMods/assets/12214398/ffc47f1e-c09c-4aae-9f52-a322c07f3e00">
 
-# OpenMWExperimentalMods
+# OpenMW Experimental Mods
 Experimental mods for OpenMW, quite often made to test the latest OpenMW developmental features.
 
 ## How to install
@@ -12,9 +12,14 @@ Have fun!
 
 ## Credit
 
-Sound effects by a dear friend https://nimsound.ru/
+Physics sound effects by a dear friend https://nimsound.ru/
 
 ## Mods
+
+### Mercy: NCBO
+
+Mercy: NPC combat behavior overhaul. 
+A significant overhaul of in-combat NPC behavior using custom lua behavior trees library, with new voice lines and animations. Only melee NPCs are affected.
 
 ### PhysicsInteractions
 
@@ -23,10 +28,8 @@ Grab and drag objects around by holding X in a similar (but not as granular) fas
 
 ### PlayerMovement
 
-A mod for testing new actor movement lua bindings. Press jump in the air to air-dash.
+A mod for testing new actor movement lua bindings, also an experimental branch. Press jump in the air to air-dash.
 
-### GothicCombat
 
-A mod for testing new actor hit lua bindings. Every woosh hit now does a tiny amount of damage instead of completely missing the target. Copy Data Files from this repo into you game directory. Blood VFX courtesy of Shadow_Mimicry.
 
 

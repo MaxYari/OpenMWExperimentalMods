@@ -38,12 +38,6 @@ function BranchNode:start()
   end
 end
 
-function BranchNode:childSwitch(node)
-  -- Usually called by a child interrupt to notify the branch node that the interrupt node is a currently active child
-  self.childIndex = node.indexInParent
-  self.childNode = node
-end
-
 function BranchNode:abort()
   if self.childNode then self.childNode:abort() end
   Node.abort(self)

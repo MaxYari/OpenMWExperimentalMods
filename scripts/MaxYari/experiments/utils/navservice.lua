@@ -236,6 +236,7 @@ local function NavigationService(config)
             for index, gameObject in ipairs(nearby.actors) do
                 if opts.ignoredObstacleObject and opts.ignoredObstacleObject.id == gameObject.id then goto continue end
                 if gameObject.id == omwself.id then goto continue end
+                if types.Actor.isDead(gameObject) then goto continue end
 
                 local obstacle = Obstacle:new(gameObject)
                 if obstacle:isValid(desiredDirection) then

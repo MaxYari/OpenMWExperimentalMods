@@ -26,20 +26,26 @@ function RepeaterDecorator:tryRestartChild()
   if self.tree.frameNumber > self.nodeStartFrameNumber then
     self.nodeStartFrameNumber = self.tree.frameNumber
     self.childNode:start()
+    return true
   else
     -- We finished same frame we started, to prevent infinite loop delay childNode start until the next run()
     self.tree:print((self.name or self.name or "NONAME_NODE") ..
       ' REPEAT DELAYED until the next frame to avoid stack overflow.')
+
     self.delayChildStart = true
     self.tree:setActiveNode(self)
+
+    return false
   end
 end
 
 function RepeaterDecorator:run()
-  Decorator.run(self)
   if self.delayChildStart then
     self.delayChildStart = false
-    self:tryRestartChild()
+    self.tree:removeActiveNode(self)
+    if self:tryRestartChild() then
+      Decorator.run(self)
+    end
   else
     error("Repeater run() was triggered without 'delayChildStart'. This should never happen!")
   end

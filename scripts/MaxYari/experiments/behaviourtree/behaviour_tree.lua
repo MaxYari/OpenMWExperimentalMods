@@ -153,13 +153,10 @@ function BehaviourTree:registerInterrupt(interruptNode)
 end
 
 function BehaviourTree:deregisterInterrupt(interruptNode)
-  if not self.interrupts[interruptNode] then
-    error(
-      interruptNode.name ..
-      " is not registered, but an attempt to deregister it was detected. This should never happen. A bug?", 2)
+  if self.interrupts[interruptNode] then
+    self.interrupts[interruptNode] = nil
+    interruptNode:deregistered()
   end
-  self.interrupts[interruptNode] = nil
-  interruptNode:deregistered()
 end
 
 function BehaviourTree:setStateObject(obj)
@@ -171,13 +168,13 @@ function BehaviourTree:setActiveNode(node)
   if self.activeNodes[node.parentNode] then
     self:removeActiveNode(node.parentNode)
   end
-  print("Adding active node " .. node.name)
+  --print("Adding active node " .. node.name)
   self.activeNodes[node] = node
 end
 
 function BehaviourTree:removeActiveNode(node)
   if self == node then return end
-  print("Removing active node " .. node.name)
+  --print("Removing active node " .. node.name)
   self.activeNodes[node] = nil
 end
 
@@ -212,15 +209,9 @@ function BehaviourTree:run()
   end
 
   --self:print("Running all active nodes:")
-  for _, node in pairs(self.activeNodes) do
-    if node.finished then
-      error(
-        "Currently active node " ..
-        node.name .. " is already finished, but an attempt to run it was detected. This should never happen. A bug?",
-        2)
-    end
-    --self:print(node.name)
-    node:run()
+  local activeNodesStatic = shallowTableCopy(self.activeNodes)
+  for _, node in pairs(activeNodesStatic) do
+    if not node.finished then node:run() end
   end
 end
 

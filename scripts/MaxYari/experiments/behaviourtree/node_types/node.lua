@@ -56,6 +56,7 @@ function Node:start()
 end
 
 function Node:run()
+  self.tree:printLazy(self.name .. " RUN")
   self.api.running = function() self:running() end
   self.api:run(self.tree.stateObject)
   self.api.running = nil --deregister so it can not be called outside the run function
@@ -72,7 +73,6 @@ function Node:running()
   if self.finished then
     error("'Running' status was reported on a node after the node was finished. Either an API misuse or a bug.", 2)
   end
-  self.tree:printLazy(self.name .. " RUNNING")
 end
 
 function Node:success()

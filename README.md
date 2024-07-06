@@ -1,4 +1,5 @@
 <img width="385" alt="image" src="https://github.com/MaxYari/OpenMWExperimentalMods/assets/12214398/ffc47f1e-c09c-4aae-9f52-a322c07f3e00">
+![alt text](cascadeur_mercy.png)
 
 # OpenMW Experimental Mods
 Experimental mods for OpenMW, quite often made to test the latest OpenMW developmental features.
@@ -16,10 +17,11 @@ Physics sound effects by a dear friend https://nimsound.ru/
 
 ## Mods
 
-### Mercy: NCBO
+### Mercy: CAO
 
-Mercy: NPC combat behavior overhaul. 
+Mercy: Combat AI Overhaul. 
 A significant overhaul of in-combat NPC behavior using custom lua behavior trees library, with new voice lines and animations. Only melee NPCs are affected.
+New unique ElevenLabs-generated voice lines by [Von Django](https://next.nexusmods.com/profile/Von%20Django/about-me?gameId=100).
 
 ### PhysicsInteractions
 

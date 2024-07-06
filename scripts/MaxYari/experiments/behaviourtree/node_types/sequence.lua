@@ -32,6 +32,12 @@ function Sequence:initialize(config)
   BranchNode.initialize(self, config)
 end
 
+function Sequence:childSwitch(node)
+  -- Usually called by a child interrupt to notify the branch node that the interrupt node is a currently active child
+  self.childIndex = node.indexInParent
+  self.childNode = node
+end
+
 function Sequence:start()
   BranchNode.start(self)
 

@@ -2,7 +2,7 @@ local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
 
-
+local fFightDispMult = core.getGMST("fFightDispMult")
 
 -- Generic utility functions --
 
@@ -40,6 +40,29 @@ local function tableToString(tbl, indent)
     return table.concat(result, "\n")
 end
 module.tableToString = tableToString
+
+local function dialogRecordInfoToString(info)
+    return "==== Dialog record info ===\n" ..
+        "filterActorClass: " .. tostring(info.filterActorClass) .. "\n" ..
+        "filterActorDisposition: " .. tostring(info.filterActorDisposition) .. "\n" ..
+        "filterActorFaction: " .. tostring(info.filterActorFaction) .. "\n" ..
+        "filterActorFactionRank: " .. tostring(info.filterActorFactionRank) .. "\n" ..
+        "filterActorGender: " .. tostring(info.filterActorGender) .. "\n" ..
+        "filterActorId: " .. tostring(info.filterActorId) .. "\n" ..
+        "filterActorRace: " .. tostring(info.filterActorRace) .. "\n" ..
+        "filterPlayerCell: " .. tostring(info.filterPlayerCell) .. "\n" ..
+        "filterPlayerFaction: " .. tostring(info.filterPlayerFaction) .. "\n" ..
+        "filterPlayerFactionRank: " .. tostring(info.filterPlayerFactionRank) .. "\n" ..
+        "id: " .. tostring(info.id) .. "\n" ..
+        "isQuestFinished: " .. tostring(info.isQuestFinished) .. "\n" ..
+        "isQuestName: " .. tostring(info.isQuestName) .. "\n" ..
+        "isQuestRestart: " .. tostring(info.isQuestRestart) .. "\n" ..
+        "questStage: " .. tostring(info.questStage) .. "\n" ..
+        "resultScript: " .. tostring(info.resultScript) .. "\n" ..
+        "sound: " .. tostring(info.sound) .. "\n" ..
+        "text: " .. tostring(info.text)
+end
+module.dialogRecordInfoToString = dialogRecordInfoToString
 
 -- A sampler that retains samples within specified time window and calculates their mean value
 -- Author: mostly ChatGPT
@@ -269,6 +292,30 @@ function Actor:getDumpableInventoryItems()
     return items
 end
 
+function Actor:isRanged()
+    -- Check if enemy actor is ranged
+    local weaponObj = self.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local weaponRecord
+    if weaponObj then
+        weaponRecord = types.Weapon.record(weaponObj.recordId)
+    end
+    local stance = self.getStance()
+
+    if weaponRecord and (weaponRecord.type == types.Weapon.TYPE.MarksmanBow or
+            weaponRecord.type == types.Weapon.TYPE.MarksmanCrossbow or
+            weaponRecord.type == types.Weapon.TYPE.MarksmanThrown) then
+        return true
+    elseif stance == types.Actor.STANCE.Spell then
+        return true
+    end
+
+    return false
+end
+
+function Actor:isMelee()
+    return not self:isRanged()
+end
+
 module.Actor = Actor
 
 local function getSortedAttackTypes(weaponRecord)
@@ -339,5 +386,25 @@ local function pickWeightedRandomAttackType(attacks)
 end
 
 module.pickWeightedRandomAttackType = pickWeightedRandomAttackType
+
+
+
+local function getFightDispositionBias(omwself, enemyActor)
+    local disposition = 50
+    if types.NPC.objectIsInstance(omwself) and types.Player.objectIsInstance(enemyActor) then
+        disposition = types.NPC.getDisposition(omwself, enemyActor)
+    end
+    return ((50 - disposition) * fFightDispMult);
+end
+
+module.getFightDispositionBias = getFightDispositionBias
+
+local function stringStartsWith(String, Start)
+    -- Source: https://stackoverflow.com/questions/22831701/lua-read-beginning-of-a-string
+    -- Author: https://stackoverflow.com/users/542190/filmor
+    return string.sub(String, 1, string.len(Start)) == Start
+end
+
+module.stringStartsWith = stringStartsWith
 
 return module

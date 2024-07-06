@@ -3,6 +3,7 @@ local gutils = require("utils/gutils")
 local moveutils = require("utils/movementutils")
 local NavigationService = require("utils/navservice")
 local itemutil = require("utils/item_util")
+local customVoiceRecords = require("assets_data/custom_voice_records")
 
 -- OpenMW libs
 local omwself = require('openmw.self')
@@ -15,7 +16,6 @@ local types = require('openmw.types')
 local nearby = require('openmw.nearby')
 local I = require('openmw.interfaces')
 local animation = require('openmw.animation')
-
 
 -- 3rd party libs
 -- Setup important global functions for the behaviourtree 2e module to use--
@@ -40,7 +40,7 @@ local animService = require("utils.animservice")
 
 gutils.print(omwself.recordId .. ": Improved AI is ON")
 
-math.randomseed(omwself.id)
+
 
 local ATTACK_STATE = {
    NO_STATE = 0,
@@ -66,6 +66,7 @@ local state = {
    attackState = ATTACK_STATE.NO_STATE,
    combatState = COMBAT_STATE.FIGHT,
    attackGroup = nil,
+   staggerGroup = nil,
    dt = 0,
    reach = 140,
    locomotion = nil,
@@ -75,10 +76,10 @@ local state = {
    -- Inclinations and probabilities
    -- Inclinations are used directly within a tree
    -- Probabilities are rolled agains in the main loop
-   standGroundProbability = 0,
-   fleeProbability = 0,
+   -- standGroundProbability = 0, -- This is not a fixed probability anymore, but rather determined dynamically in the main loop
+   -- fleeProbability = 0,
 
-   goHamInc = 0,
+   goHamHeat = 0,
    rootedAttackInc = 50,
    nearStopInc = 50,
    nearStrafeInc = 50,
@@ -117,21 +118,23 @@ local state = {
    end,
    attacksFromSkill = function(self)
       if not self.weaponSkill then return math.random(1, 2) end
-
       local skill = self.weaponSkill
+      local n = 1
       if skill >= 75 then
-         return math.random(2, 4)
+         n = math.random(2, 4)
       elseif skill >= 40 then
-         return math.random(1, 3)
+         n = math.random(1, 3)
       else
-         return math.random(1, 2)
+         n = math.random(1, 2)
       end
+      if self.goingHam then n = n * 2 end
+      return n
    end,
    attPauseFromSkill = function(self)
       if not self.weaponSkill then return 0 end
 
       local skill = self.weaponSkill
-      local duration = util.remap(skill, 0, 75, 0.6, 0)
+      local duration = util.clamp(util.remap(skill, 0, 75, 0.6, 0), 0, 0.6)
       if duration < 0 then duration = 0 end
 
 
@@ -242,13 +245,13 @@ function MoveInDirection(config)
       local shouldAbort = false
 
       if not canMove then
-         gutils.print("Move finished due to: " .. reason)
+         --gutils.print("Move finished due to: " .. reason,2)
          shouldAbort = true
       end
 
       -- Measure time passed and abort if more than distance/speed + 1.5 have passed
       if now - self.startedAt >= self.timeLimit then
-         gutils.print("Move finished due to time limit of " .. self.timeLimit .. " have been reached.")
+         --gutils.print("Move finished due to time limit of " .. self.timeLimit .. " have been reached.",2)
          shouldAbort = true
       end
 
@@ -265,7 +268,7 @@ function MoveInDirection(config)
 
       -- Done if we covered required distance
       if self.coveredDistance > self.desiredDistance then
-         gutils.print("Move success since distance was covered", 2)
+         --gutils.print("Move success since distance was covered", 2)
          return self:success()
       end
 
@@ -349,10 +352,11 @@ BT.register('JumpInDirection', JumpInDirection)
 
 function StartAttack(config)
    config.start = function(self, state)
+      self.frame = 0
       -- Pick the best attack type accounting for the weapon skill and some randomness
 
       -- If weaponRecord is nil - this will assume its hand-to-hand
-      local attacks = gutils.getSortedAttackTypes(state.weaponRecord)
+      local attacks = state.weaponAttacks
       local goodAttacks = gutils.getGoodAttacks(attacks)
       -- print("Good attacks: ", #goodAttacks)
       -- for index, value in ipairs(goodAttacks) do
@@ -375,21 +379,23 @@ function StartAttack(config)
 
       state.attack = self.ATTACK_TYPE
    end
+
    config.run = function(self, state)
-      if self.attackRequested then
-         if state.attackState == ATTACK_STATE.NO_STATE then
+      -- TO DO: Currently stagger is read on a full body, it does create an interesting effect that enemies dont attack during stagger at all, but maybe it should be changed
+      if not state.staggerGroup then
+         self.frame = self.frame + 1
+         -- print("CURRENT ATTACK FRAME: ", self.frame, " STATE: ", gutils.findField(ATTACK_STATE, state.attackState))
+         if self.frame > 3 and state.attackState == ATTACK_STATE.NO_STATE then
             return self:fail()
          end
-      else
-         self.attackRequested = true
-      end
 
-      if state.attackState == config.successAttackState then
-         return self:success()
-      end
+         if state.attackState == config.successAttackState then
+            return self:success()
+         end
 
-      if state.attackState > ATTACK_STATE.WINDUP_MAX then
-         return self:success()
+         if state.attackState >= ATTACK_STATE.WINDUP_MAX then
+            return self:success()
+         end
       end
 
       state.attack = self.ATTACK_TYPE
@@ -502,10 +508,10 @@ function RetreatToFriend(config)
 
       for index, gameObject in ipairs(nearby.actors) do
          local fightVal = types.Actor.stats.ai.fight(gameObject)
-         gutils.print("Looking at an actor " .. gameObject.recordId)
-         if types.NPC.objectIsInstance(gameObject) then
-            gutils.print("Is an npc " .. fightVal.modified)
-            if gameObject.recordId ~= "player" and fightVal.modified >= 30 then
+         if types.NPC.objectIsInstance(gameObject) and not types.Player.objectIsInstance(gameObject) then
+            gutils.print("Considering fleeing to " ..
+               gameObject.recordId .. " with a fight value of " .. fightVal.modified)
+            if fightVal.modified >= BaseRetreatToFightVal then
                gutils.print("Found a fight-ready NPC, seeking their help! Actor is: " .. gameObject.recordId)
                task.targetActor = gameObject
                break
@@ -658,19 +664,9 @@ function EnemyIsRanged(config)
 
       -- Check if enemy actor is ranged
       local enemyActor = gutils.Actor:new(state.enemyActor)
-      local weaponObj = enemyActor.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
-      local weaponRecord
-      if weaponObj then
-         weaponRecord = types.Weapon.record(weaponObj.recordId)
-      end
-      local stance = enemyActor.getStance()
 
 
-      if weaponRecord and (weaponRecord.type == types.Weapon.TYPE.MarksmanBow or
-             weaponRecord.type == types.Weapon.TYPE.MarksmanCrossbow or
-             weaponRecord.type == types.Weapon.TYPE.MarksmanThrown) then
-         task.rangedDetectedTime = task.rangedDetectedTime or core.getRealTime()
-      elseif stance == types.Actor.STANCE.Spell then
+      if enemyActor:isRanged() then
          task.rangedDetectedTime = task.rangedDetectedTime or core.getRealTime()
       else
          -- Reset ranged detected time if not ranged
@@ -753,7 +749,7 @@ local animationConfigs = {
       groupname = "surrender",
       startkey = "start",
       stopkey = "offer start",
-      priority = animation.PRIORITY.Hit,
+      priority = animation.PRIORITY.Death - 1,
       blendmask = animation.BLEND_MASK.UpperBody
    },
    surrender_offer = {
@@ -834,7 +830,6 @@ function PlayAnimation(config)
 
       -- Often even arrives too late and in breaks with completion clause
       local completion = animation.getCompletion(omwself, groupname)
-      print(completion)
       if lastCompletion ~= nil and completion == nil then
          if lastCompletion > 0.9 then
             -- Completion status will be different at different framerates, an edgecase where this be considered
@@ -906,74 +901,79 @@ BT.register("Pacify", Pacify)
 -- Intruder
 -- Thief
 
-local customVoiceRecords = {
-   go_away = {
-      infos = {
-         {
-            race = "nord",
-            gender = "female",
-            text = "Go away!",
-            file = "lol"
-         },
-         {
-            race = "nord",
-            gender = "female",
-            text = "We dont like folk like you here!",
-            file = "lol1"
-         },
-      }
-   },
-   flee_to_friends = {
-      infos = {
-         {
-            race = "nord",
-            gender = "female",
-            text = "Screw you! HEEEEEEELP!",
-            file = "lol"
-         }
-      }
-   }
-}
 
 function Say(config)
    local p = config.properties
-   local npc = types.NPC.record(omwself)
-   local gender = "female"
-   if npc.isMale then gender = "male" end
+   local race = nil
+   local gender = nil
 
-   local function filterInfos(infos)
+   if types.NPC.objectIsInstance(omwself) then
+      local npc = types.NPC.record(omwself)
+      if npc.isMale then
+         gender = "male"
+      else
+         gender = "female"
+      end
+      race = npc.race
+   end
+
+   local function noSpecificFilters(info)
+      -- TO DO: Also filter out beast-related voicelines, file names usually start with b
+      -- I probably can check the disposition as well for the "filterActorDisposition"
+      local specificFilters = { "filterActorClass", "filterActorFaction", "filterActorId",
+         "filterPlayerCell", "filterPlayerFaction", "isQuestFinished", "isQuestName", "isQuestRestart", "questStage" }
+      local noFilters = true
+      for _, filter in ipairs(specificFilters) do
+         if info[filter] then
+            noFilters = false
+            break
+         end
+      end
+      return noFilters
+   end
+
+   local function findRelevantInfos(recordType, race, gender)
       local fittingInfos = {}
-      for idx, voiceInfo in pairs(infos) do
+      local records = core.dialogue.voice.records[recordType]
+      if not records then return fittingInfos end
+
+      --print("Looking for ", recordType, " voice record type")
+
+      for _, voiceInfo in pairs(records.infos) do
          -- Need to also filter by enemy race and also accept those that are nil?
-         if voiceInfo.filterActorRace == npc.race and voiceInfo.filterActorGender == gender then
+         if voiceInfo.filterActorRace == race and voiceInfo.filterActorGender == gender and noSpecificFilters(voiceInfo) then
+            --print(gutils.dialogRecordInfoToString(voiceInfo))
             table.insert(fittingInfos, voiceInfo)
          end
       end
+
       return fittingInfos
    end
 
    config.start = function(task)
       local recordType = p.recordType()
-      local records = core.dialogue.voice.records[recordType]
-      local customRecords = customVoiceRecords[recordType]
 
-      local fittingInfos
-      if customRecords then fittingInfos = filterInfos(customRecords.infos) end
-      if #fittingInfos == 0 and records then fittingInfos = filterInfos(records.infos) end
+      local fittingInfos = {}
+      fittingInfos = customVoiceRecords.findRelevantInfos(recordType, race, gender)
+      if #fittingInfos == 0 then fittingInfos = findRelevantInfos(recordType, race, gender) end
 
       if #fittingInfos == 0 then
-         task:fail()
          gutils.print(
-            "WARNING: No voice records of type " .. recordType .. " were found for to fit character race and gender.", 0)
+            "WARNING: No voice records of type " ..
+            recordType ..
+            " were found to fit " .. tostring(race) .. " " .. tostring(gender) .. " character.", 0)
+         -- Not saying is not that bad, just ignore it
+         return task:success()
       end
 
       -- Pick random voice file
-      print("Fitting voicelines: ", #fittingInfos)
+      print("Fitting amount of voicelines: ", #fittingInfos)
       local voiceInfo = fittingInfos[math.random(1, #fittingInfos)]
+      print("Voiceline to use: ", voiceInfo.sound, voiceInfo.text)
 
       -- Finally say it!
       core.sound.say(voiceInfo.sound, omwself, voiceInfo.text)
-      task:success()
+      return task:success()
    end
 
    return BT.Task:new(config)
@@ -1016,12 +1016,87 @@ local function randomiseInclinations()
       state.weirdnessStatus = "completely normal, not weird at all."
    end
 
-   -- Purely for testing purposes
-   state.combatState = COMBAT_STATE.MERCY
+   local anger = math.random()
+   -- TO DO: Set this to 0.33
+   if anger < CanGoHamProb then
+      state.canGoHam = true
+   end
 
    -- Print the modified state for verification
    gutils.print(gutils.tableToString(state))
 end
+
+
+-- Functions to determine if its time to flee/ask for mercy
+-- Function to interpolate probability based on level difference
+local function levelBasedScaredProb()
+   -- Author: Mostly ChatGPT 2024
+   -- Directly assign numerical values for configuration
+   local minLevelDif = -10
+   local maxLevelDif = 10
+   local minProb = 0.05
+   local maxProb = 0.25
+
+   -- Get levels
+   local characterLevel = types.Actor.stats.level(omwself).current
+   local enemyLevel = types.Actor.stats.level(state.enemyActor).current
+
+   -- Calculate level difference
+   local levelDifference = characterLevel - enemyLevel
+
+   -- Clamp levelDifference within the min and max level range
+   local clampedLevelDifference = util.clamp(levelDifference, minLevelDif, maxLevelDif)
+
+   -- Normalize level difference within the range
+   local normalizedLevelDifference = (clampedLevelDifference - minLevelDif) / (maxLevelDif - minLevelDif)
+
+   -- Interpolate the probability
+   local probability = gutils.lerp(minProb, maxProb, normalizedLevelDifference)
+
+   return probability
+end
+
+-- Function to calculate if the character is scared
+local function isSelfScared(damageValue)
+   -- Author: Mostly ChatGPT 2024
+
+   -- Get current health
+   local baseHealth = selfActor.stats.dynamic.health().base
+   local currentHealth = selfActor.stats.dynamic.health().current
+
+
+   -- Proceed only if there was actual damage
+   if damageValue > 0 then
+      local healthFraction = currentHealth / baseHealth
+      --print("DAMAGE VALUE", damageValue)
+      --print("Health fraction", healthFraction)
+      -- Check if health is below 33%
+      if healthFraction < 0.33 then
+         -- Determine base probability based on level difference
+         local baseProbability = levelBasedScaredProb()
+
+         -- Calculate the damage-based factor
+         local damageFactor = damageValue / baseHealth
+
+         -- Adjust the probability based on the damage factor
+         local adjustedProbability = baseProbability * math.min(damageFactor / 0.05, 1)
+         local adjustedProbability = adjustedProbability * ScaredProbModifier
+
+         -- Roll a random number to determine if the character is scared
+         local roll = math.random()
+
+         -- If the roll is less than the adjusted probability, character is scared
+         print("CHANCE TO GET SCARED:", adjustedProbability)
+         if roll < adjustedProbability then
+            return true
+         end
+      end
+   end
+
+   -- If no damage was taken, health is above 33%, or roll is higher than probability, character is not scared
+   return false
+end
+
 
 
 
@@ -1042,132 +1117,197 @@ file:close()
 local bTrees = BT.LoadBehavior3Project(projectJsonTable, state)
 bTrees.Combat:setDebugLevel(0)
 bTrees.CombatAux:setDebugLevel(0)
-bTrees.Locomotion:setDebugLevel(1)
+bTrees.Locomotion:setDebugLevel(0)
 -- Ready to use! -----------------------------------------------------------
 
 
--- Doing some inventory stuff --
--- This should be used to give marksmen swords and send them into melee
 
 
 
+-- Defining variables used by the main update functions
+-- StandGroundProbModifier = 1
+-- ScaredProbModifier = 1
+-- CanGoHamProb = 0.33
+-- BaseRetreatToFightVal = 80
+StandGroundProbModifier = 1e42
+ScaredProbModifier = 1e42
+CanGoHamProb = 1
+BaseRetreatToFightVal = 30
+local lastWeaponRecord = { id = nil }
+local lastAiPackage = { type = nil }
+local lastHealth = selfActor.stats.dynamic.health().current
+local lastGoHamCheck = 0
+local fleedOnce = false
+local askedForMercyOnce = false
+local stoodGroundOnce = false
 
+-- Rndomising key npc factors
+math.randomseed(omwself.recordId)
+local speedFactor = math.random()
 randomiseInclinations()
-
-
-
 
 -- Main update function (finally) --
 ------------------------------------
-local speedFactor = math.random()
-local firstRun = true
-
 local function onUpdate(dt)
-   -- Reset everything
-   state:clear()
+   -- Running services
    animService:run()
+   -- Always track HP, for damage events
+   local currentHealth = selfActor.stats.dynamic.health().current
+   local damageValue = lastHealth - currentHealth
+   lastHealth = currentHealth
 
-   if firstRun then
-      -- AI.removePackages("Combat") -- As of right now this makes actors stuck in an Unknown package
-      -- selfActor.stats.ai.fight().base = 30
-      -- firstRun = false
-   end
+   -- Time
+   local now = core.getRealTime()
 
-   local aiOverride = false
-
-   -- Ignore native ai behaviour if its a Combat behaviour
+   -- Only modify AI if it's in combat and melee and not dead
    local activeAiPackage = AI.getActivePackage()
-
-   if activeAiPackage and activeAiPackage.type == "Combat" then
-      -- Combat is completely handled by behaviour trees
-      aiOverride = true
-   else
-      aiOverride = false
-      if not activeAiPackage then
-         print("No AI package :()")
-      end
-   end
-
-   omwself:enableAI(not aiOverride)
-
-   --print("Active package: ", activeAiPackage.type)
-   if not activeAiPackage or activeAiPackage.type == "Unknown" then
-      --print("Unknown package, enabling ai and returning")
+   if not activeAiPackage or activeAiPackage.type ~= "Combat" or selfActor:isRanged() or selfActor.isDead() then
       omwself:enableAI(true)
+      lastAiPackage = activeAiPackage
       return
    end
 
-   -- Provide Behaviour Tree state with the necessary info
+   state.enemyActor = AI.getActiveTarget("Combat")
+
+   -- Disabling AI so everything can be controlled by the ~Mercy~
+   omwself:enableAI(false)
+
+   -- Determine which combat state to begin with
+   if activeAiPackage.type ~= lastAiPackage.type then
+      -- AI package changed, new package is combat
+      -- Initialising combat state
+      local fightValue = selfActor.stats.ai.fight().modified + gutils.getFightDispositionBias(omwself, state.enemyActor)
+      local standGroundProb = util.clamp(util.remap(fightValue, 100, 150, 0.9, 0), 0, 0.9)
+      standGroundProb = standGroundProb * StandGroundProbModifier
+      gutils.print("STAND GROUND PROBABILITY", standGroundProb, " Fight val: ", fightValue, 1)
+      if math.random() <= standGroundProb and not stoodGroundOnce then
+         state.combatState = COMBAT_STATE.STAND_GROUND
+         stoodGroundOnce = true
+      else
+         state.combatState = COMBAT_STATE.FIGHT
+      end
+
+      lastAiPackage = activeAiPackage
+   end
+
+   -- Provide Behaviour Tree state with the necessary info --------------
+   ----------------------------------------------------------------------
+   state:clear()
+
    state.dt = dt
 
-   local combatTarget = AI.getActiveTarget("Combat")
-   state.enemyActor = combatTarget
-
-   if combatTarget then
-      state.range = gutils.getDistanceToBounds(omwself, combatTarget)
-   end
-
-   local weaponObj = selfActor.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
-   if weaponObj then
-      state.weaponRecord = types.Weapon.record(weaponObj.recordId)
-      state.weaponSkill = itemutil.getSkillStatForEquipment(omwself, weaponObj).modified
-      state.reach = state.weaponRecord.reach * fCombatDistance * 0.95
+   if state.enemyActor then
+      state.range = gutils.getDistanceToBounds(omwself, state.enemyActor)
    else
-      state.weaponRecord = nil
-      state.weaponSkill = types.NPC.stats.skills.handtohand(omwself).modified
-      state.reach = fHandToHandReach * fCombatDistance * 0.95
-      -- We are using hand-to-hand
+      state.range = 1e42
    end
 
+   -- Get weapon stats
+   local weaponObj = selfActor.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+   local weaponRecord = { id = nil }
+   if weaponObj then weaponRecord = types.Weapon.record(weaponObj.recordId) end
+
+   if weaponRecord.id ~= lastWeaponRecord.id then
+      if weaponRecord.id then
+         state.weaponAttacks = gutils.getSortedAttackTypes(weaponRecord)
+         state.weaponSkill = itemutil.getSkillStatForEquipment(omwself, weaponObj).modified
+         state.reach = weaponRecord.reach * fCombatDistance * 0.95
+      else
+         -- We are using hand-to-hand
+         state.weaponAttacks = gutils.getSortedAttackTypes(nil)
+         state.weaponSkill = types.NPC.stats.skills.handtohand(omwself).modified
+         state.reach = fHandToHandReach * fCombatDistance * 0.95
+      end
+      lastWeaponRecord = weaponRecord
+   end
+
+   -- Determine movement speed
    local walkSpeed = selfActor.getWalkSpeed()
    state.slowSpeed = gutils.lerp(walkSpeed * 0.5, walkSpeed, speedFactor)
    state.menaceSpeed = state.slowSpeed * 0.66
 
-   --state.zoomiesInc = 75
-   --state.jumpInc = 75
-   --state.goHamInc = 100
-   -----------------------------------------------------------
-
-
-   -- Verify that attack animation matching the current attackGroup is still playing - if its not - probably it was interrupted - cleaning attack state.
+   -- Track and cleanup the current attack state. If attack group is not playing - it was interrupted.
    if state.attackGroup and not animService.isPlaying(state.attackGroup) then
       state.attackGroup = nil
       state.attackState = ATTACK_STATE.NO_STATE
    end
 
+   -- And the same for stagger state
+   if state.staggerGroup and not animService.isPlaying(state.staggerGroup) then
+      state.staggerGroup = nil
+   end
 
+   -- Check for fleeing/mercy
+   local scared = isSelfScared(damageValue) -- Since this tracks lastHP - better check it every frame
+   if (state.combatState == COMBAT_STATE.FIGHT or state.combatState == COMBAT_STATE.STAND_GROUND) and scared then
+      local potentialStates = {}
+      if not fleedOnce then table.insert(potentialStates, COMBAT_STATE.FLEE) end
+      if not askedForMercyOnce then table.insert(potentialStates, COMBAT_STATE.MERCY) end
+      if #potentialStates > 0 then
+         local newState = potentialStates[math.random(1, #potentialStates)]
+         state.combatState = newState
+         if state.combatState == COMBAT_STATE.FLEE then fleedOnce = true end
+         if state.combatState == COMBAT_STATE.MERCY then askedForMercyOnce = true end
+      end
+   end
 
-   -- Run behaviour trees!
+   -- Check for going ham
+   if state.combatState == COMBAT_STATE.FIGHT and state.canGoHam then
+      if damageValue > 0 and now - lastGoHamCheck >= 0.25 then
+         if now - lastGoHamCheck < 1 then
+            state.goHamHeat = state.goHamHeat + 0.2
+            state.goingHam = math.random() < state.goHamHeat
+         end
+         lastGoHamCheck = now
+      end
+   end
+
+   -- Reduce goHamHeat overtime
+   state.goHamHeat = state.goHamHeat - 0.1 * dt
+   if state.goHamHeat < 0 then
+      state.goHamHeat = 0
+      state.goingHam = false
+   end
+
+   -- Running behaviour trees! -----------------------------
+   ---------------------------------------------------------
    bTrees["Combat"]:run()
    bTrees["CombatAux"]:run()
    bTrees["Locomotion"]:run()
 
-   if aiOverride then
-      -- Apply the results of Behaviour Tree run to the actor
-      omwself.controls.run = state.run
-      omwself.controls.movement = state.movement
-      omwself.controls.sideMovement = state.sideMovement
-      omwself.controls.use = state.attack
-      omwself.controls.jump = state.jump
 
-      -- If no lookDirection provided - default behaviour is to stare at the enemy
-      local lookDirection
-      if state.attackState == ATTACK_STATE.NO_STATE then
-         lookDirection = state.lookDirection
-      end
-      if not lookDirection and state.enemyActor then
-         lookDirection = state.enemyActor.position - omwself.position
-      end
-      if lookDirection then
-         omwself.controls.yawChange = gutils.lerpClamped(0,
-            -moveutils.lookRotation(omwself, omwself.position + lookDirection), dt * 3)
-      end
+   -- Apply state properties modified by the tries to actor controls ----
+   omwself.controls.run = state.run
+   omwself.controls.movement = state.movement
+   omwself.controls.sideMovement = state.sideMovement
+   omwself.controls.use = state.attack
+   omwself.controls.jump = state.jump
+
+   -- If no lookDirection provided - default behaviour is to stare at the enemy
+   -- If an attack is in progress - force look at the enemyActor
+   local lookDirection
+   if state.attackState == ATTACK_STATE.NO_STATE then
+      lookDirection = state.lookDirection
+   end
+   if not lookDirection and state.enemyActor then
+      lookDirection = state.enemyActor.position - omwself.position
+   end
+   if lookDirection then
+      omwself.controls.yawChange = gutils.lerpClamped(0,
+         -moveutils.lookRotation(omwself, omwself.position + lookDirection), dt * 3)
    end
 end
 
 
 -- Animation handlers --------
 ------------------------------
+I.AnimationController.addPlayBlendedAnimationHandler(function(groupname, options)
+   --print("New animation started! " .. groupname .. " : " .. options.startkey .. " --> " .. options.stopkey)
+   if gutils.stringStartsWith(groupname, "hit") then
+      state.staggerGroup = groupname
+   end
+end)
+
 -- In the text key handler: Theres no way to know for which bonegroup the text key was triggered?
 I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    --print("Animation text key! " .. groupname .. " : " .. key)
@@ -1214,4 +1354,12 @@ return {
    engineHandlers = {
       onUpdate = onUpdate,
    },
+   -- This handler only works when attached to player
+   -- onConsoleCommand = function(mode, command, selectedObject)
+   --    if command == "lua_mercy_printstate" and selectedObject.id == omwself.id then
+   --       local stateString = gutils.print(gutils.tableToString(state))
+   --       print(stateString)
+   --       ui.printToConsole(stateString, ui.CONSOLE_COLOR.Info)
+   --    end
+   -- end
 }

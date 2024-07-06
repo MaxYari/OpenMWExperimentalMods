@@ -10,7 +10,8 @@ function Parallel:initialize(config)
 
   for _, node in ipairs(self.childNodes) do
     if node.isStealthy then
-      error("Stealthy interrupt nodes (node: " .. node.name .. ") are not allowed as direct children of a parallel node.",
+      error(
+        "Stealthy interrupt nodes (node: " .. node.name .. ") are not allowed as direct children of a parallel node.",
         2)
     end
   end
@@ -55,6 +56,14 @@ end
 
 function Parallel:fail()
   self:propagateStatus("fail")
+end
+
+function Parallel:abort()
+  for _, node in ipairs(self.usableChildNodes) do
+    if node.finished == false then node:abort() end
+  end
+
+  BranchNode.abort(self)
 end
 
 return Parallel

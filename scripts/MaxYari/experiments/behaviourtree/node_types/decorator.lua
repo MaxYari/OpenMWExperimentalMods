@@ -16,6 +16,7 @@ function Decorator:start()
   --Its possible that .start resulted in a Node reporting a success/fail task and finishing, in that case we should terminate. Reporting a success/fail state was supposedly
   --already done, since finished flag is set after that
   if self.finished then return end
+  -- TODO: if this happens - decorator will try and unregister an interrupt, although it was never registered - will throw error
 
   --Register all interrupts
   if self.childNode.isInterrupt then

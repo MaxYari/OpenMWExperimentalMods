@@ -1,6 +1,5 @@
 <img width="385" alt="image" src="https://github.com/MaxYari/OpenMWExperimentalMods/assets/12214398/ffc47f1e-c09c-4aae-9f52-a322c07f3e00">
-![image](https://github.com/MaxYari/OpenMWExperimentalMods/assets/12214398/d3296b67-aea1-47d8-a75c-475fb761156d)
-
+<img width="385" alt="image" src="https://github.com/MaxYari/OpenMWExperimentalMods/assets/12214398/d3296b67-aea1-47d8-a75c-475fb761156d">
 
 # OpenMW Experimental Mods
 Experimental mods for OpenMW, quite often made to test the latest OpenMW developmental features.

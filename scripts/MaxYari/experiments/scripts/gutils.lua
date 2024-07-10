@@ -1,6 +1,8 @@
 local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
+local status, omwself = pcall(require, "openmw.self")
+local status, nearby = pcall(require, "openmw.nearby")
 
 local fFightDispMult = core.getGMST("fFightDispMult")
 
@@ -22,10 +24,36 @@ local function uprint(...)
         for i, v in ipairs(args) do
             args[i] = tostring(v)
         end
-        print("[Mercy]:", table.concat(args, " "))
+        local messageHeader = "[Mercy]"
+        if omwself then messageHeader = messageHeader .. "[" .. omwself.recordId .. "]" end
+        print(messageHeader .. ":", table.concat(args, " "))
     end
 end
 module.print = uprint
+
+local function foundInList(list, item)
+    -- Author: ChatGPT 2024
+    for _, value in ipairs(list) do
+        if value == item then
+            return true
+        end
+    end
+    return false
+end
+module.foundInList = foundInList
+
+local function stringToHash(str)
+    -- Author: ChatGPT 2024
+    local hash = 5381
+
+    for i = 1, #str do
+        local char = str:byte(i)
+        hash = ((hash * 33) + char) % 2 ^ 32 -- Multiply by 33 and add ASCII value
+    end
+
+    return hash
+end
+module.stringToHash = stringToHash
 
 local function tableToString(tbl, indent)
     indent = indent or "  "
@@ -246,7 +274,7 @@ module.lerpClamped = lerpClamped
 
 
 local Actor = {}
-local ActorMT = {}
+Actor.__index = Actor
 
 function Actor:new(go, omwClass)
     if not omwClass then omwClass = types.Actor end
@@ -254,18 +282,19 @@ function Actor:new(go, omwClass)
         gameObject = go,
         omwClass = omwClass
     }
-    setmetatable(instance, ActorMT)
+    setmetatable(instance, self)
     return instance
 end
 
-function ActorMT:__index(key)
-    if self.omwClass == types.Actor then
-        if Actor[key] then return Actor[key] end
+function Actor:__index(key)
+    local value = rawget(Actor, key)
+    if value ~= nil then
+        return value
     end
 
-    local value = self.omwClass[key]
+    value = self.omwClass[key]
     if type(value) == "function" then
-        return function(...)
+        return function(_, ...)
             return value(self.gameObject, ...)
         end
     elseif type(value) == "table" or type(value) == "userdata" then
@@ -284,7 +313,7 @@ function Actor:getDumpableInventoryItems()
     local invItems = inventory:getAll()
 
     for i, item in pairs(invItems) do
-        if types.Armor.objectIsInstance(item) or types.Clothing.objectIsInstance(item) then goto continue end
+        if (types.Armor.objectIsInstance(item) or types.Clothing.objectIsInstance(item)) and self:hasEquipped(item) then goto continue end
         table.insert(items, item)
         ::continue::
     end
@@ -294,12 +323,12 @@ end
 
 function Actor:isRanged()
     -- Check if enemy actor is ranged
-    local weaponObj = self.getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local weaponObj = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
     local weaponRecord
     if weaponObj then
         weaponRecord = types.Weapon.record(weaponObj.recordId)
     end
-    local stance = self.getStance()
+    local stance = self:getStance()
 
     if weaponRecord and (weaponRecord.type == types.Weapon.TYPE.MarksmanBow or
             weaponRecord.type == types.Weapon.TYPE.MarksmanCrossbow or
@@ -316,7 +345,25 @@ function Actor:isMelee()
     return not self:isRanged()
 end
 
+function Actor:isVampire()
+    -- Based on Urm's function
+    local vampirism = self:activeEffects():getEffect('vampirism')
+    local isVampire = not vampirism or vampirism.magnitude > 0
+    return isVampire
+end
+
 module.Actor = Actor
+
+
+local function forEachNearbyActor(distLimit, cb)
+    for _, actor in ipairs(nearby.actors) do
+        local dist = (omwself.position - actor.position):length()
+        if dist < distLimit then
+            cb(actor)
+        end
+    end
+end
+module.forEachNearbyActor = forEachNearbyActor
 
 local function getSortedAttackTypes(weaponRecord)
     if weaponRecord then
@@ -384,7 +431,6 @@ local function pickWeightedRandomAttackType(attacks)
 
     return attacks[1]
 end
-
 module.pickWeightedRandomAttackType = pickWeightedRandomAttackType
 
 
@@ -396,8 +442,26 @@ local function getFightDispositionBias(omwself, enemyActor)
     end
     return ((50 - disposition) * fFightDispMult);
 end
-
 module.getFightDispositionBias = getFightDispositionBias
+
+
+local function imAGuard()
+    local record = types.NPC.record(omwself)
+    return record and record.class == "guard"
+end
+module.imAGuard = imAGuard
+
+local castingSkills = { "conjuration", "alteration", "destruction", "mysticism", "restoration" }
+local function imASpellCaster()
+    if not types.NPC.objectIsInstance(omwself) then return false end
+    local className = types.NPC.record(omwself.recordId).class
+    local majorSkills = types.NPC.classes.record(className).majorSkills
+    for _, skillName in ipairs(majorSkills) do
+        if foundInList(castingSkills, skillName) then return true end
+    end
+    return false
+end
+module.imASpellCaster = imASpellCaster
 
 local function stringStartsWith(String, Start)
     -- Source: https://stackoverflow.com/questions/22831701/lua-read-beginning-of-a-string

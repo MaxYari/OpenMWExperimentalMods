@@ -3,10 +3,11 @@ local types = require('openmw.types')
 local nearby = require('openmw.nearby')
 local util = require('openmw.util')
 
-local gutils = require("utils/gutils")
-local moveutils = require("utils/movementutils")
+local gutils = require("scripts/gutils")
+local moveutils = require("scripts/movementutils")
 
 local selfActor = gutils.Actor:new(omwself)
+
 
 
 -- Local obstacle avoidance class --------------------------------------------------------
@@ -17,7 +18,7 @@ Obstacle.__index = Obstacle
 -- Constructor
 function Obstacle:new(obstacle)
     local obstacleHS = gutils.diagonalFlatHalfSize(types.Actor.getPathfindingAgentBounds(obstacle))
-    local actorHS = gutils.diagonalFlatHalfSize(selfActor.getPathfindingAgentBounds())
+    local actorHS = gutils.diagonalFlatHalfSize(selfActor:getPathfindingAgentBounds())
     local threshold = obstacleHS + actorHS
 
     local obj = {
@@ -97,17 +98,17 @@ local function NavigationService(config)
 
     local NavData = {
         path = nil,
-        pathStatus = nil,
+        findPathStatus = nil,
+        doorStuck = false,
         targetPos = nil,
         pathPointIndex = 1,
         nextPathPoint = nil,
-        runSpeed = selfActor.getRunSpeed(),
-        walkSpeed = selfActor.getWalkSpeed(),
-        bounds = selfActor.getPathfindingAgentBounds(),
+        runSpeed = selfActor:getRunSpeed(),
+        walkSpeed = selfActor:getWalkSpeed(),
+        bounds = selfActor:getPathfindingAgentBounds(),
         lastDirection = nil,
         posToVelSampler = gutils.PosToVelSampler:new(1)
     }
-
 
 
     -- Navmesh point validity checker ----------------------------------
@@ -142,9 +143,9 @@ local function NavigationService(config)
 
 
     -- Pathing functions -------------------------------------------------------
-    function NavData:getPathStatusVerbose()
-        if self.pathStatus == nil then return nil end
-        return gutils.findField(nearby.FIND_PATH_STATUS, self.pathStatus)
+    function NavData:getfindPathStatusVerbose()
+        if self.findPathStatus == nil then return nil end
+        return gutils.findField(nearby.FIND_PATH_STATUS, self.findPathStatus)
     end
 
     function NavData:isPathCompleted()
@@ -164,11 +165,11 @@ local function NavigationService(config)
     end
 
     local function findPath()
-        NavData.pathStatus, NavData.path = nearby.findPath(omwself.object.position, NavData.targetPos, {
-            agentBounds = selfActor.getPathfindingAgentBounds(),
+        NavData.findPathStatus, NavData.path = nearby.findPath(omwself.object.position, NavData.targetPos, {
+            agentBounds = selfActor:getPathfindingAgentBounds(),
         })
         NavData.pathPointIndex = 1
-        return NavData.pathStatus, NavData.path
+        return NavData.findPathStatus, NavData.path
     end
 
     local findPathCached = gutils.cache(findPath, config.cacheDuration)
@@ -187,18 +188,32 @@ local function NavigationService(config)
     function NavData:run(opts)
         -- Setting up defaults
         if opts.desiredSpeed == -1 then
-            opts.desiredSpeed = selfActor.getRunSpeed()
+            opts.desiredSpeed = selfActor:getRunSpeed()
         end
 
         -- Fetching a new path if necessary
         if self.targetPos then
-            local pathStatus, path, cacheStatus = findPathCached()
+            local findPathStatus, path, cacheStatus = findPathCached()
+            self.findPathStatus = findPathStatus
+        end
+
+        -- Find shortcuts
+        local startI = self.pathPointIndex + 1
+        local i = startI
+        while i <= #self.path and i <= startI + 2 do
+            local pathPoint = self.path[i]
+            local position = nearby.castNavigationRay(omwself.position, pathPoint, {
+                agentBounds = selfActor:getPathfindingAgentBounds(),
+            })
+            if position and (position - pathPoint):length() < 10 then
+                self.pathPointIndex = i
+            end
+            i = i + 1
         end
 
         -- Updating path progress
         if self.path and self.pathPointIndex <= #self.path then
             -- Check if the actor reached the current target point
-            -- Loop through the path, cast nav rays and check if can be reached directly?
             while self.pathPointIndex <= #self.path do
                 if positionReached(omwself.object.position, self.path[self.pathPointIndex]) then
                     self.pathPointIndex = self.pathPointIndex + 1
@@ -225,6 +240,20 @@ local function NavigationService(config)
         else
             movement, sideMovement = 0, 0
         end
+
+        -- Raycast ahead, if door is hit - fail, doors are impenetrable for now :(
+        if desiredDirection then
+            local rayFro = gutils.getActorLookRayPos(omwself)
+            local rayTo = rayFro + desiredDirection * 100
+            local raycast = nearby.castRay(rayFro,
+                rayTo, { ignore = omwself, collisionType = nearby.COLLISION_TYPE.Door })
+            if raycast.hitObject then
+                self.doorStuck = true
+            else
+                self.doorStuck = false
+            end
+        end
+
 
         -- Detecting obstacles and adjusting movement if necessary
         if desiredDirection and self.lastDirection then

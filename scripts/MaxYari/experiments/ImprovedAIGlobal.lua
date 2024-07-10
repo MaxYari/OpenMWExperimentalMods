@@ -1,7 +1,7 @@
-local gutils = require("utils/gutils")
-local types = require('openmw.types')
+local gutils = require("scripts/gutils")
+local core = require("openmw.core")
 
-
+if core.API_REVISION < 63 then return end
 
 return {
     eventHandlers = {
@@ -9,16 +9,7 @@ return {
             -- data.actor, data.position
             local actor = gutils.Actor:new(data.actorObject)
             local items = actor:getDumpableInventoryItems()
-
-            for i, item in pairs(items) do
-                local isEquipped = actor.hasEquipped(item)
-
-                print("i: " ..
-                    i ..
-                    " recordId: " ..
-                    item.recordId ..
-                    " equipped: " .. tostring(isEquipped))
-
+            for _, item in pairs(items) do
                 item:teleport(data.actorObject.cell, data.position, { onGround = true })
                 ::continue::
             end

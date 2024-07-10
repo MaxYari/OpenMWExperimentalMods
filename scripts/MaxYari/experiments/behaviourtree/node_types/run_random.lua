@@ -20,20 +20,17 @@ local function weightedRandomChoice(nodes)
   end
 end
 
-function RunRandom:initialize(config)
-  BranchNode.initialize(self, config)
-  -- Detecting node weights
-  for _, node in ipairs(self.usableChildNodes) do
-    if node.p.weight then node.weight = node.p.weight() else node.weight = 1 end
-  end
-end
-
 function RunRandom:start()
   -- Reworked by ChatGPT
   BranchNode.start(self)
 
   -- Initialize repeats and maxSameRuns
   self.maxSameRuns = self.p.maxSameRuns and self.p.maxSameRuns() or nil
+  -- Detecting node weights
+  for _, node in ipairs(self.usableChildNodes) do
+    if node.p.weight then node.weight = node.p.weight() else node.weight = 1 end
+  end
+
   self.currentRepeats = 0
 
   if #self.usableChildNodes == 0 then

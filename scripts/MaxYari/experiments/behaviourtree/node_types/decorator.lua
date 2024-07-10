@@ -39,7 +39,9 @@ end
 
 function Decorator:run()
   Node.run(self)
-  self.childNode:run()
+  if not self.childNode.finished then
+    self.childNode:run()
+  end
 end
 
 function Decorator:finish()

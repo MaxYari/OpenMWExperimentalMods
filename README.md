@@ -21,7 +21,7 @@ Physics sound effects by a dear friend https://nimsound.ru/
 
 Mercy: Combat AI Overhaul. 
 A significant overhaul of in-combat NPC behavior using custom lua behavior trees library, with new voice lines and animations. Only melee NPCs are affected.
-New unique ElevenLabs-generated voice lines by [Von Django](https://next.nexusmods.com/profile/Von%20Django/about-me?gameId=100).
+New unique ElevenLabs-generated voice lines by [vonwolfe](https://next.nexusmods.com/profile/vonwolfe).
 
 ### PhysicsInteractions
 

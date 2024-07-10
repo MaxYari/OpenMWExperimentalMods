@@ -39,10 +39,12 @@ BehaviourTree.register                = Registry.register
 
 -- Getting a hold on important environment methods
 -- Code parsing method -------------------------
+---@diagnostic disable-next-line: deprecated
 local loadCodeHere = _G.load or _G.loadstring or imports.loadCodeHere
 g.loadCodeInScope  = imports.loadCodeInScope or function(code, scope)
   local func, err = loadCodeHere(code)
   if func then
+    ---@diagnostic disable-next-line: deprecated
     setfenv(func, scope) -- Set the environment to the provided scope
     return func
   else

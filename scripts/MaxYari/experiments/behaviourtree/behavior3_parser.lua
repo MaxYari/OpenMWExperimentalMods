@@ -40,22 +40,38 @@ local function ParsePropertyValue(val, config)
     end
 end
 
+local function findTree(id, projectData)
+    for i, treeData in pairs(projectData.trees) do
+        if treeData.id == id then
+            return treeData
+        end
+    end
+    return nil
+end
 
-local function parseNode(node, treeData)
+
+local function parseNode(node, treeData, projectData)
     if node == nil then
         return error("Passed node argument is nil, this shouldn't happen...")
     end
+    -- If this node is an embeded tree - switch to that
+    local embededTree = findTree(node.name, projectData)
+    if embededTree then
+        print("Detected EMBEDED tree " .. embededTree.title .. " switching to that!")
+        return parseNode(embededTree.nodes[embededTree.root], embededTree, projectData)
+    end
+
     local initData = {}
     initData.name = node.title or node.name
     initData.isStealthy = node.isStealthy
 
     if node.child then
-        initData.childNode = parseNode(treeData.nodes[node.child], treeData)
+        initData.childNode = parseNode(treeData.nodes[node.child], treeData, projectData)
     end
     if node.children then
         initData.childNodes = {}
         for i, childId in pairs(node.children) do
-            local cn = parseNode(treeData.nodes[childId], treeData)
+            local cn = parseNode(treeData.nodes[childId], treeData, projectData)
             if cn == nil then
                 return error("Parsed node is nil, this shouldn't happen... Node id: " ..
                     childId .. " Node json data: " .. tostring(treeData.nodes[childId]))
@@ -107,7 +123,7 @@ local function ParseBehavior3Project(projectData, _state)
             error(treeData.title ..
                 " tree has no root. Ensure that you have atleast a single node conected to the root node in that tree.")
         end
-        trees[treeData.title] = parseNode(treeData.nodes[treeData.root], treeData)
+        trees[treeData.title] = parseNode(treeData.nodes[treeData.root], treeData, projectData)
     end
 
     return trees

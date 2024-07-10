@@ -8,6 +8,7 @@ end
 module.lookDirection = lookDirection
 
 local function flatAngleBetween(a, b)
+    ---@diagnostic disable-next-line: deprecated
     return math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y)
 end
 

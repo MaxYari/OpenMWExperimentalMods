@@ -307,8 +307,7 @@ end
 function Actor:getDumpableInventoryItems()
     -- data.actor, data.position
     local items = {}
-    local actor = self
-    local inventory = actor.inventory()
+    local inventory = self:inventory()
     --print("Inventory resolved:", inventory:isResolved())
     local invItems = inventory:getAll()
 
@@ -352,7 +351,24 @@ function Actor:isVampire()
     return isVampire
 end
 
+function Actor:canOpenDoor(door)
+    local canOpen = true
+    if types.Lockable.isLocked(door) then
+        canOpen = false
+        local keyRecord = types.Lockable.getKeyRecord(door)
+        local inventory = self:inventory()
+        if keyRecord and inventory:find(keyRecord.id) then
+            -- The door is locked, but actor has a key!
+            canOpen = true
+        end
+    end
+    return canOpen
+end
+
 module.Actor = Actor
+
+
+
 
 
 local function forEachNearbyActor(distLimit, cb)

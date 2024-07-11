@@ -1,3 +1,4 @@
+local core = require("openmw.core")
 local omwself = require('openmw.self')
 local types = require('openmw.types')
 local nearby = require('openmw.nearby')
@@ -241,14 +242,23 @@ local function NavigationService(config)
             movement, sideMovement = 0, 0
         end
 
-        -- Raycast ahead, if door is hit - fail, doors are impenetrable for now :(
+        -- Raycast ahead, if door is hit - open it, if can't - fail
         if desiredDirection then
             local rayFro = gutils.getActorLookRayPos(omwself)
             local rayTo = rayFro + desiredDirection * 100
             local raycast = nearby.castRay(rayFro,
                 rayTo, { ignore = omwself, collisionType = nearby.COLLISION_TYPE.Door })
-            if raycast.hitObject then
-                self.doorStuck = true
+            local door = raycast.hitObject
+            -- We stumbled upon a door, maybe we can open it?
+            if door then
+                if not types.Door.isTeleport(door) and selfActor:canOpenDoor(door) then
+                    if types.Door.getDoorState(door) ~= types.Door.STATE.Opening then
+                        core.sendGlobalEvent("openTheDoor", { actorObject = omwself, doorObject = door })
+                    end
+                    self.doorStuck = false
+                else
+                    self.doorStuck = true
+                end
             else
                 self.doorStuck = false
             end

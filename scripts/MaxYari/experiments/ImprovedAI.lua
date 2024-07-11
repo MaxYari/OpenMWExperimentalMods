@@ -31,7 +31,7 @@ DebugLevel = 2
 local fCombatDistance = core.getGMST("fCombatDistance")
 local fHandToHandReach = core.getGMST("fHandToHandReach")
 
-if core.API_REVISION < 63 then return end
+if core.API_REVISION < 64 then return end
 
 
 -- And the story begins!
@@ -314,15 +314,18 @@ local function onUpdate(dt)
 
 
    -- Door experiments
-   for _, door in ipairs(nearby.doors) do
-      print("a door", door.recordId)
-      print(types.Door.getDoorState(door))
-      if not types.Door.isTeleport(door) then
-         print("opening")
-         types.Door.activateDoor(door, true)
-         print("opened?")
-      end
-   end
+   -- for _, door in ipairs(nearby.doors) do
+   --    print("a door", door.recordId)
+   --    print(types.Door.getDoorState(door))
+   --    if not types.Door.isTeleport(door) then
+   --       print("opening?")
+   --       if selfActor:canOpenDoor(door) then
+   --          core.sendGlobalEvent("openTheDoor", { actorObject = omwself, doorObject = door })
+   --       else
+   --          gutils.print("Door", door.recordId, "can not be opened by", omwself.recordId)
+   --       end
+   --    end
+   -- end
 
    -- Time
    local now = core.getRealTime()
@@ -330,7 +333,7 @@ local function onUpdate(dt)
    -- Sending on Damaged events
    if damageValue > 0 then
       gutils.forEachNearbyActor(2000, function(actor)
-         if types.Player.objectIsInstance(actor) or actor.id == omwself.id then return end
+         if types.Player.objectIsInstance(actor) or actor == omwself.object then return end
          actor:sendEvent('FriendDamaged', { source = omwself.object })
       end)
    end
@@ -339,7 +342,7 @@ local function onUpdate(dt)
    local deathState = selfActor:isDead()
    if lastDeadState ~= nil and lastDeadState ~= deathState then
       if deathState then
-         gutils.forEachNearbyActor(2000, function(actor)
+         gutils.forEachNearbyActor(1000, function(actor)
             if types.Player.objectIsInstance(actor) or actor.id == omwself.id then return end
             actor:sendEvent('FriendDead', { source = omwself.object })
          end)

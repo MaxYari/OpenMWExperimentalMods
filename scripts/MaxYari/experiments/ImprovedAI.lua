@@ -278,7 +278,7 @@ bTrees.Locomotion:setDebugLevel(1)
 -- Defining variables used by the main update functions
 StandGroundProbModifier = 1
 ScaredProbModifier = 1
-CanGoHamProb = 0.33
+CanGoHamProb = 0.5
 BaseFriendFightVal = 80
 AvengeShoutProb = 0.5
 -- TO DO: Comment this out for production
@@ -312,21 +312,6 @@ local function onUpdate(dt)
    state.damageValue = damageValue
    lastHealth = currentHealth
 
-
-   -- Door experiments
-   -- for _, door in ipairs(nearby.doors) do
-   --    print("a door", door.recordId)
-   --    print(types.Door.getDoorState(door))
-   --    if not types.Door.isTeleport(door) then
-   --       print("opening?")
-   --       if selfActor:canOpenDoor(door) then
-   --          core.sendGlobalEvent("openTheDoor", { actorObject = omwself, doorObject = door })
-   --       else
-   --          gutils.print("Door", door.recordId, "can not be opened by", omwself.recordId)
-   --       end
-   --    end
-   -- end
-
    -- Time
    local now = core.getRealTime()
 
@@ -343,14 +328,14 @@ local function onUpdate(dt)
    if lastDeadState ~= nil and lastDeadState ~= deathState then
       if deathState then
          gutils.forEachNearbyActor(1000, function(actor)
-            if types.Player.objectIsInstance(actor) or actor.id == omwself.id then return end
+            if types.Player.objectIsInstance(actor) or actor == omwself.object then return end
             actor:sendEvent('FriendDead', { source = omwself.object })
          end)
       end
    end
    lastDeadState = deathState
 
-   -- Only modify AI if it's in combat and melee and not dead
+   -- Only modify AI if it's in combat and is melee and not a caster and not dead!
    local activeAiPackage = AI.getActivePackage()
    if not activeAiPackage or activeAiPackage.type ~= "Combat" or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
       omwself:enableAI(true)
@@ -501,7 +486,7 @@ local function onUpdate(dt)
    end
 end
 
-
+-- TO DO: Test this again, last time I was fighting vanilla ai actor - friends were ignoring that.
 local function onFriendDamaged(e)
    -- gutils.print("Oh no, ", e.source.recordId, " got damaged!")
    if state.combatState == enums.COMBAT_STATE.STAND_GROUND then

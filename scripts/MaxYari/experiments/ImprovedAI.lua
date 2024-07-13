@@ -36,7 +36,7 @@ if core.API_REVISION < 64 then error("Can not start Mercy: CAO, newer version of
 
 -- And the story begins!
 -- if omwself.recordId ~= "tanisie verethi" then return end
-gutils.print(omwself.recordId .. ": Mercy: CAO Improved AI is ON")
+gutils.print(omwself.recordId .. ": Mercy: CAO BETA Improved AI is ON",0)
 
 
 -- State object is an object to which behavior tree has access
@@ -282,11 +282,11 @@ CanGoHamProb = 0.5
 BaseFriendFightVal = 80
 AvengeShoutProb = 0.5
 -- TO DO: Comment this out for production
-StandGroundProbModifier = 1e42
-ScaredProbModifier = 1e42
-CanGoHamProb = 1
-BaseFriendFightVal = 30
-AvengeShoutProb = 1
+-- StandGroundProbModifier = 1e42
+-- ScaredProbModifier = 1e42
+-- CanGoHamProb = 1
+-- BaseFriendFightVal = 30
+-- AvengeShoutProb = 1
 
 
 local lastWeaponRecord = { id = "_" }
@@ -501,6 +501,7 @@ local function onUpdate(dt)
 end
 
 -- TO DO: Test this again, last time I was fighting vanilla ai actor - friends were ignoring that.
+-- Also if you miss with ranged - theyll ignore that as well
 local function onFriendDamaged(e)
    --gutils.print("Oh no, ", e.source.recordId, " got damaged!")
    if state.combatState == enums.COMBAT_STATE.STAND_GROUND then
@@ -508,7 +509,6 @@ local function onFriendDamaged(e)
    end
 end
 
--- TO DO: What if a guard kills a monster? Probably need to store last few seconds of targets and check if this was ever targeted
 local avengeSaid = false
 local function onFriendDead(e)
    --gutils.print("Oh no, ", e.source.recordId, " is dead!")

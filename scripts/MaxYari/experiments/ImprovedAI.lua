@@ -35,7 +35,7 @@ if core.API_REVISION < 64 then return end
 
 
 -- And the story begins!
-if omwself.recordId ~= "tanisie verethi" then return end
+-- if omwself.recordId ~= "tanisie verethi" then return end
 gutils.print(omwself.recordId .. ": Improved AI is ON")
 
 
@@ -287,8 +287,11 @@ ScaredProbModifier = 1e42
 CanGoHamProb = 1
 BaseFriendFightVal = 30
 AvengeShoutProb = 1
+
+
 local lastWeaponRecord = { id = "_" }
 local lastAiPackage = { type = nil }
+local lastAiOverrideState = false
 local lastHealth = selfActor.stats.dynamic:health().current
 local lastDeadState = nil
 local lastGoHamCheck = 0
@@ -336,46 +339,51 @@ local function onUpdate(dt)
    lastDeadState = deathState
 
    -- Only modify AI if it's in combat and is melee and not a caster and not dead!
+   local AiOverrideState = true
    local activeAiPackage = AI.getActivePackage()
+   local enemyActor = AI.getActiveTarget("Combat")
    if not activeAiPackage or activeAiPackage.type ~= "Combat" or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
-      omwself:enableAI(true)
-      lastAiPackage = activeAiPackage
+      AiOverrideState = false
       return
    end
 
-   state.enemyActor = AI.getActiveTarget("Combat")
+   -- Storing combat targets in history
+   gutils.addTargetsToHistory(I.AI.getTargets("Combat"))
 
-   -- Disabling AI so everything can be controlled by the ~Mercy~
-   omwself:enableAI(false)
-
-   -- Determine which combat state to begin with
-   -- TO DO: NO! This will not work when ai changes from one weapon to another, we need to observe the ai switch event, not package change!
-   if activeAiPackage.type ~= lastAiPackage.type then
-      -- AI package changed, new package is combat
+   -- If we started overriding AI - determine which combat state to begin in
+   if AiOverrideState and AiOverrideState ~= lastAiOverrideState and activeAiPackage == "Combat" then
       -- Initialising combat state
       core.sound.stopSay(omwself);
+      local combatStarted = activeAiPackage.type == "Combat" and (not lastAiPackage or lastAiPackage.type ~= "Combat")
       local isGuard = gutils.imAGuard()
       local fightBias = selfActor.stats.ai:fight().modified
-      local dispBias = gutils.getFightDispositionBias(omwself, state.enemyActor)
+      local dispBias = gutils.getFightDispositionBias(omwself, enemyActor)
       local fightValue = fightBias + dispBias
       local standGroundProb = util.clamp(util.remap(fightValue, 85, 100, 0.9, 0), 0, 0.9)
       standGroundProb = standGroundProb * StandGroundProbModifier
       -- gutils.print("STAND GROUND PROBABILITY", standGroundProb, " Fight val: ", fightBias, dispBias, 1)
-      if luaRandom:random() <= standGroundProb and not stoodGroundOnce and not isGuard and damageValue <= 0 then
+      if combatStarted and luaRandom:random() <= standGroundProb and not stoodGroundOnce and not isGuard and damageValue <= 0 then
          state.combatState = enums.COMBAT_STATE.STAND_GROUND
          stoodGroundOnce = true
       else
          state.combatState = enums.COMBAT_STATE.FIGHT
       end
-
-      lastAiPackage = activeAiPackage
    end
+   lastAiPackage = activeAiPackage
+   lastAiOverrideState = AiOverrideState
+
+   -- Disabling AI so everything can be controlled by the ~Mercy~
+   omwself:enableAI(not AiOverrideState)
+   -- If we are NOT overriding AI - leave
+   if not AiOverrideState then return end
+   
 
    -- Provide Behaviour Tree state with the necessary info --------------
    ----------------------------------------------------------------------
    state:clear()
 
    state.dt = dt
+   state.enemyActor = enemyActor
 
    if state.enemyActor then
       state.range = gutils.getDistanceToBounds(omwself, state.enemyActor)
@@ -488,17 +496,19 @@ end
 
 -- TO DO: Test this again, last time I was fighting vanilla ai actor - friends were ignoring that.
 local function onFriendDamaged(e)
-   -- gutils.print("Oh no, ", e.source.recordId, " got damaged!")
+   gutils.print("Oh no, ", e.source.recordId, " got damaged!")
    if state.combatState == enums.COMBAT_STATE.STAND_GROUND then
       state.combatState = enums.COMBAT_STATE.FIGHT
    end
 end
 
+-- TO DO: What if a guard kills a monster? Probably need to store last few seconds of targets and check if this was ever targeted
 local avengeSaid = false
 local function onFriendDead(e)
    gutils.print("Oh no, ", e.source.recordId, " is dead!")
-   if state.combatState == enums.COMBAT_STATE.FIGHT and math.random() < AvengeShoutProb and not avengeSaid then
-      voiceManager.say(nil, "FriendDead")
+   if state.combatState == enums.COMBAT_STATE.FIGHT and gutils.isMyFriend(e.source) and math.random() < AvengeShoutProb and not avengeSaid then
+      print("Saying")
+      voiceManager.say(omwself, nil, "FriendDead")
       avengeSaid = true
    end
 end

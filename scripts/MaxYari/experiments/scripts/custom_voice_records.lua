@@ -223,6 +223,52 @@ local records = {
                targetGender = "male"
             }
          }
+      },
+      {
+         race = "dark elf",
+         gender = "female",
+         infos = {
+            {
+               text = "Grab her!",
+               sound = vvf .. "d\\f\\OP_DF001.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Grab him!",
+               sound = vvf .. "d\\f\\OP_DF002.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "She's over here!",
+               sound = vvf .. "d\\f\\OP_DF003.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "He's over here!",
+               sound = vvf .. "d\\f\\OP_DF004.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There he is!",
+               sound = vvf .. "d\\f\\OP_DF005.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There she is!",
+               sound = vvf .. "d\\f\\OP_DF006.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize her!",
+               sound = vvf .. "d\\f\\OP_DF007.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize him!",
+               sound = vvf .. "d\\f\\OP_DF008.mp3",
+               targetGender = "male"
+            }
+         }
       }
    },
    Mercy = {
@@ -469,7 +515,7 @@ local records = {
    }
 }
 
-local function findRelevantInfos(recordType, race, gender)
+local function findRelevantInfos(recordType, race, gender, isBeast)
    local fittingInfos = {}
    local typerecords = records[recordType]
    if not typerecords then return fittingInfos end

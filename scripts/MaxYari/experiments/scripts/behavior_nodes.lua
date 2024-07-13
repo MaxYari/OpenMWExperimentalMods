@@ -376,15 +376,7 @@ end
 
 BT.register('ChaseEnemy', ChaseEnemy)
 
-local function isMyFriend(actor)
-    local sameType = true
-    if types.NPC.objectIsInstance(omwself) and not types.NPC.objectIsInstance(actor) then
-        sameType = false
-    end
-    local fightVal = types.Actor.stats.ai.fight(actor)
-    return actor.id ~= omwself.id and not types.Player.objectIsInstance(actor) and sameType and
-        not types.Actor.isDead(actor) and fightVal.modified >= BaseFriendFightVal
-end
+
 
 function FriendsNearby(config)
     local p = config.properties
@@ -392,7 +384,7 @@ function FriendsNearby(config)
     config.start = function(task, state)
         local distThreshold = p.distance()
         for _, actor in ipairs(nearby.actors) do
-            if (omwself.position - actor.position):length() <= distThreshold and isMyFriend(actor) then return end
+            if (omwself.position - actor.position):length() <= distThreshold and gutils.isMyFriend(actor) and not types.Actor.isDead(actor) then return end
         end
         return task:fail()
     end
@@ -401,6 +393,8 @@ function FriendsNearby(config)
 end
 
 BT.register("FriendsNearby", FriendsNearby)
+
+
 
 function RetreatToFriend(config)
     config.findTargetActor = function(task, state)
@@ -411,7 +405,7 @@ function RetreatToFriend(config)
 
         for index, actor in ipairs(nearby.actors) do
             local dist = gutils.getDistanceToBounds(omwself, actor)
-            if isMyFriend(actor) and (not closestFriend or (dist > 300 and dist < closestFriendDist)) then
+            if gutils.isMyFriend(actor) and not types.Actor.isDead(actor) and (not closestFriend or (dist > 350 and dist < closestFriendDist)) then
                 closestFriend = actor
                 closestFriendDist = dist
             end
@@ -795,15 +789,38 @@ function Say(config)
     local p = config.properties
 
     config.start = function(task, state)
-        local result = voiceManager.say(state.enemyActor, p.recordType(), p.force())
-        if result then
-            return task:success()
-        else
-            return task:fail()
-        end
+        voiceManager.say(omwself, state.enemyActor, p.recordType(), p.force())
+        return task:success()
     end
 
     return BT.Task:new(config)
 end
 
 BT.register("Say", Say)
+
+function SayGroup(config)
+    local p = config.properties
+    local voices = 0
+
+    config.start = function(task, state)
+        local maxVoices = p.maxVoices()
+
+        gutils.forEachNearbyActor(700, function (actor)
+            if core.sound.isSayActive(actor) then
+                voices = voices + 1
+                if voices > maxVoices then
+                    return task:fail()
+                end
+            end
+        end)
+        
+        voiceManager.say(omwself, state.enemyActor, p.recordType(), p.force())
+        return task:success()
+    end
+
+    return BT.Task:new(config)
+end
+
+BT.register("SayGroup", SayGroup)
+
+

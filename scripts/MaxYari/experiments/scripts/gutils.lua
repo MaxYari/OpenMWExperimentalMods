@@ -479,6 +479,38 @@ local function imASpellCaster()
 end
 module.imASpellCaster = imASpellCaster
 
+local targetsHistory = {}
+local function addTargetsToHistory(targets)
+    -- Author: mostly ChatGPT 2024
+    local timeLimit = 5
+    local now = core.getRealTime()
+    for _, target in ipairs(targets) do
+        targetsHistory[target] = now
+    end
+    for target, timestamp in pairs(targetsHistory) do
+        if now - timestamp > timeLimit then
+            targetsHistory[target] = nil
+        end
+    end
+end
+module.addTargetsToHistory = addTargetsToHistory
+
+local function wasMyTarget(actor)
+    return targetsHistory[actor]
+end
+module.wasMyTarget = wasMyTarget
+
+local function isMyFriend(actor)
+    local sameType = true
+    if types.NPC.objectIsInstance(omwself) and not types.NPC.objectIsInstance(actor) then
+        sameType = false
+    end
+    local fightVal = types.Actor.stats.ai.fight(actor)
+    return actor.id ~= omwself.id and not types.Player.objectIsInstance(actor) and sameType and
+        not wasMyTarget(actor) and fightVal.modified >= BaseFriendFightVal
+end
+module.isMyFriend = isMyFriend
+
 local function stringStartsWith(String, Start)
     -- Source: https://stackoverflow.com/questions/22831701/lua-read-beginning-of-a-string
     -- Author: https://stackoverflow.com/users/542190/filmor

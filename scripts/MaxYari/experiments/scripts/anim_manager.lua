@@ -8,7 +8,7 @@ local events = EventsManager:new()
 
 local animationConfigs = {
     stand_ground_idle = {
-        groupname = { "stayaway1", "stayaway2", "stayaway3" },
+        groupname = { "stayaway1", "stayaway2", "stayaway3", "stayaway4" },
         priority = animation.PRIORITY.Hit,
         blendmask = animation.BLEND_MASK.LowerBody
     },

@@ -20,7 +20,7 @@ _BehaviourTreeImports = {
     loadCodeInScope = util.loadCode,
     clock = core.getRealTime
 }
-local BT = require('behaviourtree/behaviour_tree')
+local BT = require('scripts.MaxYari.behaviourtreelua2e.lib.behaviour_tree')
 
 local navService = NavigationService({
     cacheDuration = 1,

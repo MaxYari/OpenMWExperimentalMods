@@ -20,7 +20,7 @@ local I = require('openmw.interfaces')
 
 -- 3rd party libs
 -- Setup important global functions for the behaviourtree 2e module to use--
-local BT = require('behaviourtree/behaviour_tree')
+local BT = require('scripts.MaxYari.behaviourtreelua2e.lib.behaviour_tree')
 local json = require("json")
 local luaRandom = require("libs/randomlua")
 ----------------------------------------------------------------------------
@@ -31,12 +31,12 @@ DebugLevel = 2
 local fCombatDistance = core.getGMST("fCombatDistance")
 local fHandToHandReach = core.getGMST("fHandToHandReach")
 
-if core.API_REVISION < 64 then return end
+if core.API_REVISION < 64 then error("Can not start Mercy: CAO, newer version of lua API is required. Please update OpenMW.") end
 
 
 -- And the story begins!
 -- if omwself.recordId ~= "tanisie verethi" then return end
-gutils.print(omwself.recordId .. ": Improved AI is ON")
+gutils.print(omwself.recordId .. ": Mercy: CAO Improved AI is ON")
 
 
 -- State object is an object to which behavior tree has access
@@ -237,7 +237,7 @@ local function isSelfScared(damageValue)
          local roll = math.random()
 
          -- If the roll is less than the adjusted probability, character is scared
-         print("CHANCE TO GET SCARED:", adjustedProbability)
+         -- print("CHANCE TO GET SCARED:", adjustedProbability)
          if roll < adjustedProbability then
             return true
          end
@@ -267,9 +267,9 @@ file:close()
 -- Initialise behaviour trees ----------------------------------------------
 gutils.print("Loading Behavior3 project")
 local bTrees = BT.LoadBehavior3Project(projectJsonTable, state)
-bTrees.Combat:setDebugLevel(1)
+bTrees.Combat:setDebugLevel(0)
 bTrees.CombatAux:setDebugLevel(0)
-bTrees.Locomotion:setDebugLevel(1)
+bTrees.Locomotion:setDebugLevel(0)
 -- Ready to use! -----------------------------------------------------------
 
 
@@ -344,17 +344,14 @@ local function onUpdate(dt)
    local enemyActor = AI.getActiveTarget("Combat")
    if not activeAiPackage or activeAiPackage.type ~= "Combat" or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
       AiOverrideState = false
-      return
    end
 
    -- Storing combat targets in history
    gutils.addTargetsToHistory(I.AI.getTargets("Combat"))
 
    -- If we started overriding AI - determine which combat state to begin in
-   if AiOverrideState and AiOverrideState ~= lastAiOverrideState and activeAiPackage == "Combat" then
+   if lastAiPackage.type ~= activeAiPackage.type and activeAiPackage.type == "Combat" then
       -- Initialising combat state
-      core.sound.stopSay(omwself);
-      local combatStarted = activeAiPackage.type == "Combat" and (not lastAiPackage or lastAiPackage.type ~= "Combat")
       local isGuard = gutils.imAGuard()
       local fightBias = selfActor.stats.ai:fight().modified
       local dispBias = gutils.getFightDispositionBias(omwself, enemyActor)
@@ -362,13 +359,22 @@ local function onUpdate(dt)
       local standGroundProb = util.clamp(util.remap(fightValue, 85, 100, 0.9, 0), 0, 0.9)
       standGroundProb = standGroundProb * StandGroundProbModifier
       -- gutils.print("STAND GROUND PROBABILITY", standGroundProb, " Fight val: ", fightBias, dispBias, 1)
-      if combatStarted and luaRandom:random() <= standGroundProb and not stoodGroundOnce and not isGuard and damageValue <= 0 then
+      if luaRandom:random() <= standGroundProb and not stoodGroundOnce and not isGuard and damageValue <= 0 then
          state.combatState = enums.COMBAT_STATE.STAND_GROUND
          stoodGroundOnce = true
       else
          state.combatState = enums.COMBAT_STATE.FIGHT
       end
    end
+
+   if AiOverrideState and AiOverrideState ~= lastAiOverrideState then
+      core.sound.stopSay(omwself);
+      -- If ai override happened in middle of combat - ensure that we won't go into STAND_GROUND state
+      if lastAiPackage.type == "Combat" then
+         state.combatState = enums.COMBAT_STATE.FIGHT
+      end
+   end
+
    lastAiPackage = activeAiPackage
    lastAiOverrideState = AiOverrideState
 
@@ -496,7 +502,7 @@ end
 
 -- TO DO: Test this again, last time I was fighting vanilla ai actor - friends were ignoring that.
 local function onFriendDamaged(e)
-   gutils.print("Oh no, ", e.source.recordId, " got damaged!")
+   --gutils.print("Oh no, ", e.source.recordId, " got damaged!")
    if state.combatState == enums.COMBAT_STATE.STAND_GROUND then
       state.combatState = enums.COMBAT_STATE.FIGHT
    end
@@ -505,7 +511,7 @@ end
 -- TO DO: What if a guard kills a monster? Probably need to store last few seconds of targets and check if this was ever targeted
 local avengeSaid = false
 local function onFriendDead(e)
-   gutils.print("Oh no, ", e.source.recordId, " is dead!")
+   --gutils.print("Oh no, ", e.source.recordId, " is dead!")
    if state.combatState == enums.COMBAT_STATE.FIGHT and gutils.isMyFriend(e.source) and math.random() < AvengeShoutProb and not avengeSaid then
       print("Saying")
       voiceManager.say(omwself, nil, "FriendDead")

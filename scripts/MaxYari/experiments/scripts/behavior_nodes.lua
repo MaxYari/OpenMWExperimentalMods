@@ -256,6 +256,7 @@ function StartAttack(config)
 
     config.run = function(self, state)
         -- TO DO: Currently stagger is read on a full body, it does create an interesting effect that enemies dont attack during stagger at all, but maybe it should be changed
+        -- print(state.attackState, config.successAttackState, enums.ATTACK_STATE.WINDUP_MAX)
         if not state.staggerGroup then
             self.frame = self.frame + 1
             -- print("CURRENT ATTACK FRAME: ", self.frame, " STATE: ", gutils.findField(ATTACK_STATE, state.attackState))
@@ -263,7 +264,7 @@ function StartAttack(config)
                 return self:fail()
             end
 
-            if state.attackState == config.successAttackState then
+            if state.attackState >= config.successAttackState then
                 return self:success()
             end
 

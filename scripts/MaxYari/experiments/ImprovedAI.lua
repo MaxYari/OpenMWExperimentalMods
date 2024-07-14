@@ -31,12 +31,13 @@ DebugLevel = 2
 local fCombatDistance = core.getGMST("fCombatDistance")
 local fHandToHandReach = core.getGMST("fHandToHandReach")
 
-if core.API_REVISION < 64 then error("Can not start Mercy: CAO, newer version of lua API is required. Please update OpenMW.") end
+if core.API_REVISION < 64 then error(
+   "Can not start Mercy: CAO, newer version of lua API is required. Please update OpenMW.") end
 
 
 -- And the story begins!
 -- if omwself.recordId ~= "tanisie verethi" then return end
-gutils.print(omwself.recordId .. ": Mercy: CAO BETA Improved AI is ON",0)
+gutils.print(omwself.recordId .. ": Mercy: CAO BETA Improved AI is ON", 0)
 
 
 -- State object is an object to which behavior tree has access
@@ -382,7 +383,7 @@ local function onUpdate(dt)
    omwself:enableAI(not AiOverrideState)
    -- If we are NOT overriding AI - leave
    if not AiOverrideState then return end
-   
+
 
    -- Provide Behaviour Tree state with the necessary info --------------
    ----------------------------------------------------------------------
@@ -533,13 +534,18 @@ end)
 I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    --print("Animation text key! " .. groupname .. " : " .. key)
    --print("Position of the key: " .. tostring(animation.getTextKeyTime(omwself.object, groupname .. ": " .. key)))
+   if state.combatState == enums.COMBAT_STATE.FIGHT then
+      print(groupname, key)
+   end
 
-   if string.find(key, "chop") or string.find(key, "thrust") or string.find(key, "slash") then
+   if string.find(key, "chop start") or string.find(key, "thrust start") or string.find(key, "slash start") then
       state.attackState = enums.ATTACK_STATE.WINDUP_START
       state.attackGroup = groupname
    end
 
-   if string.find(key, "min attack") then
+   -- Animation compilation has min and max attack on a same keyframe due to which they might arrive out of order. So avoid setting MIN state
+   -- if higher state is already set
+   if string.find(key, "min attack") and state.attackState < enums.ATTACK_STATE.WINDUP_MIN then
       state.attackState = enums.ATTACK_STATE.WINDUP_MIN
    end
 

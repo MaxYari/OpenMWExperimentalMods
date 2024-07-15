@@ -345,7 +345,7 @@ local function onUpdate(dt)
    local AiOverrideState = true
    local activeAiPackage = AI.getActivePackage()
    local enemyActor = AI.getActiveTarget("Combat")
-   if not activeAiPackage or activeAiPackage.type ~= "Combat" or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
+   if not activeAiPackage or activeAiPackage.type ~= "Combat" or types.Actor.isDead(activeAiPackage.target) or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
       AiOverrideState = false
    end
 

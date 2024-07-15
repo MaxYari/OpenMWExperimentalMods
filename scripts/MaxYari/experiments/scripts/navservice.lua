@@ -4,8 +4,8 @@ local types = require('openmw.types')
 local nearby = require('openmw.nearby')
 local util = require('openmw.util')
 
-local gutils = require("scripts/gutils")
-local moveutils = require("scripts/movementutils")
+local gutils = require(mp .. "scripts/gutils")
+local moveutils = require(mp .. "scripts/movementutils")
 
 local selfActor = gutils.Actor:new(omwself)
 

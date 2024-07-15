@@ -1,10 +1,10 @@
 -- Mod files
-local gutils = require("scripts/gutils")
-local moveutils = require("scripts/movementutils")
-local NavigationService = require("scripts/navservice")
-local voiceManager = require("scripts/voice_manager")
-local animManager = require("scripts/anim_manager")
-local enums = require("scripts/enums")
+local gutils = require(mp .. "scripts/gutils")
+local moveutils = require(mp .. "scripts/movementutils")
+local NavigationService = require(mp .. "scripts/navservice")
+local voiceManager = require(mp .. "scripts/voice_manager")
+local animManager = require(mp .. "scripts/anim_manager")
+local enums = require(mp .. "scripts/enums")
 
 -- OpenMW libs
 local omwself = require('openmw.self')

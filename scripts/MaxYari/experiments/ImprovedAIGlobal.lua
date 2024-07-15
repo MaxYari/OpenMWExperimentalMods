@@ -1,4 +1,6 @@
-local gutils = require("scripts/gutils")
+mp = "scripts/MaxYari/experiments/"
+
+local gutils = require(mp .. "scripts/gutils")
 local core = require("openmw.core")
 local types = require("openmw.types")
 

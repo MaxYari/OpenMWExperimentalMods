@@ -1,11 +1,13 @@
+mp = "scripts/MaxYari/experiments/"
+
 -- Mod files
-local gutils = require("scripts/gutils")
-local moveutils = require("scripts/movementutils")
-local itemutil = require("scripts/item_util")
-local enums = require("scripts/enums")
-local behaviorNodes = require("scripts/behavior_nodes")
-local animManager = require("scripts/anim_manager")
-local voiceManager = require("scripts/voice_manager")
+local gutils = require(mp .. "scripts/gutils")
+local moveutils = require(mp .. "scripts/movementutils")
+local itemutil = require(mp .. "scripts/item_util")
+local enums = require(mp .. "scripts/enums")
+local behaviorNodes = require(mp .. "scripts/behavior_nodes")
+local animManager = require(mp .. "scripts/anim_manager")
+local voiceManager = require(mp .. "scripts/voice_manager")
 
 -- OpenMW libs
 local omwself = require('openmw.self')
@@ -21,8 +23,8 @@ local I = require('openmw.interfaces')
 -- 3rd party libs
 -- Setup important global functions for the behaviourtree 2e module to use--
 local BT = require('scripts.MaxYari.behaviourtreelua2e.lib.behaviour_tree')
-local json = require("json")
-local luaRandom = require("libs/randomlua")
+local json = require(mp .. "libs/json")
+local luaRandom = require(mp .. "libs/randomlua")
 ----------------------------------------------------------------------------
 
 

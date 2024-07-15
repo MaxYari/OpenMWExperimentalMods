@@ -1,3 +1,5 @@
+mp = "scripts/MaxYari/experiments/"
+
 local core = require("openmw.core")
 local ui = require("openmw.ui")
 

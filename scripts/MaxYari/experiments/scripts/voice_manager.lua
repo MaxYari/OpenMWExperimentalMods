@@ -8,8 +8,8 @@
 -- Intruder
 -- Thief
 
-local gutils = require("scripts/gutils")
-local customVoiceRecords = require("scripts/custom_voice_records")
+local gutils = require(mp .. "scripts/gutils")
+local customVoiceRecords = require(mp .. "scripts/custom_voice_records")
 
 local types = require("openmw.types")
 local core = require("openmw.core")

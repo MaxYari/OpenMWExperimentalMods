@@ -537,7 +537,7 @@ I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    --print("Animation text key! " .. groupname .. " : " .. key)
    --print("Position of the key: " .. tostring(animation.getTextKeyTime(omwself.object, groupname .. ": " .. key)))
    if state.combatState == enums.COMBAT_STATE.FIGHT then
-      print(groupname, key)
+      --print(groupname, key)
    end
 
    if string.find(key, "chop start") or string.find(key, "thrust start") or string.find(key, "slash start") then

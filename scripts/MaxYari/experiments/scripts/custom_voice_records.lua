@@ -10,6 +10,24 @@ local vvf = "Sound\\Vo\\"
 local records = {
    StandGround = {
       {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMStandGround1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMStandGround2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMStandGround3.mp3"
+            }
+         }
+      },
+      {
          race = "nord",
          gender = "female",
          infos = {
@@ -79,6 +97,24 @@ local records = {
       },
    },
    CombatDowntime = {
+      {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMCombatDowntime1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMCombatDowntime2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMCombatDowntime3.mp3"
+            }
+         }
+      },
       {
          race = "nord",
          gender = "female",
@@ -162,6 +198,24 @@ local records = {
    },
    Retreat = {
       {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMRetreat1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMRetreat2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMRetreat3.mp3"
+            }
+         }
+      },
+      {
          race = "nord",
          gender = "female",
          infos = {
@@ -235,6 +289,98 @@ local records = {
       },
    },
    GetEm = {
+      {
+         race = "orc",
+         gender = "female",
+         infos = {
+            {
+               text = "Grab her!",
+               sound = vvf .. "o\\f\\OP_OF001.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Grab him!",
+               sound = vvf .. "o\\f\\OP_OF002.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "She's over here!",
+               sound = vvf .. "o\\f\\OP_OF003.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "He's over here!",
+               sound = vvf .. "o\\f\\OP_OF004.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There he is!",
+               sound = vvf .. "o\\f\\OP_OF005.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There she is!",
+               sound = vvf .. "o\\f\\OP_OF006.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize her!",
+               sound = vvf .. "o\\f\\OP_OF007.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize him!",
+               sound = vvf .. "o\\f\\OP_OF008.mp3",
+               targetGender = "male"
+            }
+         }
+      },
+      {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "Grab her!",
+               sound = vvf .. "o\\m\\OP_OM001.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Grab him!",
+               sound = vvf .. "o\\m\\OP_OM002.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "She's over here!",
+               sound = vvf .. "o\\m\\OP_OM003.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "He's over here!",
+               sound = vvf .. "o\\m\\OP_OM004.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There he is!",
+               sound = vvf .. "o\\m\\OP_OM005.mp3",
+               targetGender = "male"
+            },
+            {
+               text = "There she is!",
+               sound = vvf .. "o\\m\\OP_OM006.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize her!",
+               sound = vvf .. "o\\m\\OP_OM007.mp3",
+               targetGender = "female"
+            },
+            {
+               text = "Seize him!",
+               sound = vvf .. "o\\m\\OP_OM008.mp3",
+               targetGender = "male"
+            }
+         }
+      },
       {
          race = "nord",
          gender = "male",
@@ -422,6 +568,24 @@ local records = {
    },
    Mercy = {
       {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMMercy1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercy2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercy3.mp3"
+            }
+         }
+      },
+      {
          race = "nord",
          gender = "female",
          infos = {
@@ -495,6 +659,24 @@ local records = {
       }
    },
    MercyDisarm = {
+      {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisarm1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisarm2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisarm3.mp3"
+            }
+         }
+      },
       {
          race = "nord",
          gender = "female",
@@ -582,6 +764,24 @@ local records = {
    },
    MercyDisengage = {
       {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisengage1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisengage2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMMercyDisengage3.mp3"
+            }
+         }
+      },
+      {
          race = "nord",
          gender = "female",
          infos = {
@@ -660,6 +860,24 @@ local records = {
    },
    FriendDead = {
       {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMFriendDead1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMFriendDead2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMFriendDead3.mp3"
+            }
+         }
+      },
+      {
          race = "nord",
          gender = "male",
          infos = {
@@ -733,6 +951,24 @@ local records = {
       }
    },
    Warcry = {
+      {
+         race = "orc",
+         gender = "male",
+         infos = {
+            {
+               text = "",
+               sound = vf .. "OrcMWarcry1.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMWarcry2.mp3"
+            },
+            {
+               text = "",
+               sound = vf .. "OrcMWarcry3.mp3"
+            }
+         }
+      },
       {
          race = "dark elf",
          gender = "female",

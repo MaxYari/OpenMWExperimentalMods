@@ -74,12 +74,17 @@ There are number of properties you can set on a state object to affect the actor
 state.stance = types.Actor.STANCE.Weapon
 state.run = true
 state.jump = false
-state.attack = 0
+state.attack = 0 -- directly maps to self.controls.use
 state.movement = 0
 state.sideMovement = 0
-state.lookDirection = nil
+state.lookDirection = nil -- a global vector from actor toward its look target, actor will be interpolate-rotated towards that, otherwise it will loop at its enemyActor
 -- Value below will NOT be reset every frame - you can change it to force Mercy trees to switch into a different combat state
 state.combatState = "STAND_GROUND",
+-- Below is a current combat package target, you shouldn't change this - but it's useful to know who this actor is fighting against
+state.enemyActor
+-- current frame's delta time
+state.dt
+
 ```
 
 If your extension was successfully attached - you should see a `[MercyCAO][...] Found an extension your_extension ...` message printed in the console (f10 lua console or a game process console, not in-game tilda console).

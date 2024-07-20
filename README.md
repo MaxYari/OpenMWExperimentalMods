@@ -67,7 +67,7 @@ interfaces.MercyCAO.addExtension("Locomotion", "STAND_GROUND", {
 })
 ```
 
-`state` argument is behaviour's tree state, its a table of properties and functions to which all of the Mercy: CAO behaviour trees have direct access.
+`state` argument is behaviour's tree state (sometimes called a "blackboard" in other behaviour tree libraries/implementations), its a table of properties and functions to which all of the Mercy: CAO behaviour trees have direct access.
 There are number of properties you can set on a state object to affect the actor, main ones are:
 ```Lua
 -- Velues below are default values. These properties are reset to their defaults EVERY FRAME before the tree runs, so if you want to keep .movement at a specific value - you need to set it every frame, i.e every run() of your extension!

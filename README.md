@@ -31,16 +31,16 @@ New unique ElevenLabs-generated voice lines by [vonwolfe](https://next.nexusmods
 Mercy can be extended with other behavious via an interface, allowing for multiple mods to implement various behaviour that will seamlessly work together. First of all Mercy script should be in a load order _before_ your extension. Secondly you should use the extension interface before the first onUpdate call, otherwise Mercy will finish its initialisation without acknowledging your extension. It's not possible to extend Mercy in a middle of it's runtime.
 
 Extensions are done using `interfaces.MercyCAO.addExtension(treeName, extensionPointName, extensionObject)`.
-Mercy AI globally split to 2 behaviour trees (`treeName` argument. And actually its 3 trees, but let's ignore the 3rd one - it's an auxiliary and doesn't have any extension points):
-`Locomotion` - A tree responsible for character movement through space - strafing, chasing, moving around e.t.c
-`Combat` - responsible for attacking - checking range, making quick or long swings, series of attacks e.t.c
+Mercy AI is globally split to 2 different behaviour trees (`treeName` argument. And actually its 3 trees, but let's ignore the 3rd one - it's an auxiliary and doesn't have any extension points):
+- `Locomotion` - A tree responsible for character movement through space - strafing, chasing, moving around e.t.c
+- `Combat` - responsible for attacking - checking range, making quick or long swings, series of attacks e.t.c
 Those trees run in parallel.
 
 Furtermore all of the behaviours/branches within those trees are grouped within 4 principal combat AI states (`extensionPointName` argument):
-`STAND_GROUND` - Although technically in a combat state (Combat ai package, in fact Mercy works _only_ when combat package is active) - actor is hesitant to engage, will not rush towards the enemy, will slowly move around a bit, play a warning voice line. If too much time will pass in this state (while enemy is in line of sight) or an enemy will get too close - combat stat will switch to `FIGHT`
-`FIGHT` - Main engagement mode. Actor will run, strafe, chase, fallback, attack e.t.c. If actor's health gets too low - it _might_ switch to `RETREAT` or `MERCY` state.
-`RETREAT` - Checks if there are other actors nearby potentially aggressive towards actors enemy - if so - retreats towards them and waits there. Similarly to `STAND_GROUND` - if enemy gets too close - reingages `FIGHT`
-`MERCY` - Actor asks for mercy, lays down their weapons/items and gets pacified. If Actor is attacked too much during this process - will reingage `FIGHT`
+- `STAND_GROUND` - Although technically in a combat state (Combat ai package, in fact Mercy works _only_ when combat package is active) - actor is hesitant to engage, will not rush towards the enemy, will slowly move around a bit, play a warning voice line. If too much time will pass in this state (while enemy is in line of sight) or an enemy will get too close - combat stat will switch to `FIGHT`
+- `FIGHT` - Main engagement mode. Actor will run, strafe, chase, fallback, attack e.t.c. If actor's health gets too low - it _might_ switch to `RETREAT` or `MERCY` state.
+- `RETREAT` - Checks if there are other actors nearby potentially aggressive towards actors enemy - if so - retreats towards them and waits there. Similarly to `STAND_GROUND` - if enemy gets too close - reingages `FIGHT`
+- `MERCY` - Actor asks for mercy, lays down their weapons/items and gets pacified. If Actor is attacked too much during this process - will reingage `FIGHT`
 
 `extensionObject` is a lua table that implements your behaviour, it's structured in a very similar way to behaviour nodes used internally by Mercy. This table supposed to implement a set of methods that will be called by the behaviour tree when the execution flow reached that part of the tree.
 

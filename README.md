@@ -67,6 +67,21 @@ interfaces.MercyCAO.addExtension("Locomotion", "STAND_GROUND", {
 })
 ```
 
+`state` argument is behaviour's tree state, its a table of properties and functions to which all of the Mercy: CAO behaviour trees have direct access.
+There are number of properties you can set on a state object to affect the actor, main ones are:
+```Lua
+-- Velues below are default values. These properties are reset to their defaults EVERY FRAME before the tree runs, so if you want to keep .movement at a specific value - you need to set it every frame, i.e every run() of your extension!
+state.stance = types.Actor.STANCE.Weapon
+state.run = true
+state.jump = false
+state.attack = 0
+state.movement = 0
+state.sideMovement = 0
+state.lookDirection = nil
+-- Value below will NOT be reset every frame - you can change it to force Mercy trees to switch into a different combat state
+state.combatState = "STAND_GROUND",
+```
+
 If your extension was successfully attached - you should see a `[MercyCAO][...] Found an extension your_extension ...` message printed in the console (f10 lua console or a game process console, not in-game tilda console).
 
 If you are familiar with the concept of behaviour trees here's a visual aid explaining where those extension nodes are injected:

@@ -1,3 +1,5 @@
+local mp = "scripts/MaxYari/experiments/"
+
 local core = require("openmw.core")
 local omwself = require('openmw.self')
 local types = require('openmw.types')

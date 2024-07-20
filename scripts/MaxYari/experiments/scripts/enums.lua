@@ -9,11 +9,11 @@ local ATTACK_STATE = {
 }
 
 local COMBAT_STATE = {
-    NO_STATE = 0,
-    STAND_GROUND = 1,
-    FIGHT = 2,
-    RETREAT = 3,
-    MERCY = 4
+    NO_STATE = "NO_STATE",
+    STAND_GROUND = "STAND_GROUND",
+    FIGHT = "FIGHT",
+    RETREAT = "RETREAT",
+    MERCY = "MERCY"
 }
 
 return {

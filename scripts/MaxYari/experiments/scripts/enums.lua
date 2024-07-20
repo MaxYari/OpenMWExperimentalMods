@@ -12,7 +12,7 @@ local COMBAT_STATE = {
     NO_STATE = 0,
     STAND_GROUND = 1,
     FIGHT = 2,
-    FLEE = 3,
+    RETREAT = 3,
     MERCY = 4
 }
 

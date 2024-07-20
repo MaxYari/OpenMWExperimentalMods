@@ -1,3 +1,5 @@
+local mp = "scripts/MaxYari/experiments/"
+
 local I = require('openmw.interfaces')
 local animation = require('openmw.animation')
 local omwself = require('openmw.self')

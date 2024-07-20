@@ -1,5 +1,5 @@
 local input = require('openmw.input')
-local self = require('openmw.self')
+local omwself = require('openmw.self')
 local core = require('openmw.core')
 local types = require('openmw.types')
 local camera = require('openmw.camera')
@@ -7,24 +7,104 @@ local util = require('openmw.util')
 local nearby = require('openmw.nearby')
 local animation = require('openmw.animation')
 local I = require('openmw.interfaces')
+local animManager = require("scripts.MaxYari.experiments.scripts.anim_manager")
+local gutils = require("scripts.MaxYari.experiments.scripts.gutils")
+
+local attackNum = 0
+local shouldOverride = false
+local overrideWalk = true
+local scheduledAnim = nil
+
+local function ends_with(str, ending)
+    return ending == "" or str:sub(- #ending) == ending
+end
+
+local function isSupportedAttackType(key, suffix)
+    if suffix then suffix = " " .. suffix end
+    if not suffix then suffix = "" end
+    return string.find(key, "chop" .. suffix) or string.find(key, "slash" .. suffix) or string.find(key, "thrust" .. suffix)
+end
+
+local runAnimOpts = nil
 
 I.AnimationController.addPlayBlendedAnimationHandler(function(groupname, options)
-    --I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
-    --print("Animation text key! " .. groupname .. " : " .. key)
     print("New animation started! " .. groupname .. " : " .. options.startkey .. " --> " .. options.stopkey)
-    -- Note: attack animation can be interrupted, so this states most likely should reset after few seconds just in case, to ponder: what if character holds the attack long enough for this to reset?
-    -- Probably need to check animation timings to figure for sure if we are in the attack group or not, can get the group during windup and then repeatedly check if its still playing, reset if not
-    if string.find(options.startkey, "chop start") then
-        -- Cancel vanilla chops, we are taking care of this
-        --print("Overriding")
-        --options.startkey = string.gsub(options.startkey, "chop", "chop1")
-        --options.stopkey = string.gsub(options.stopkey, "chop", "chop1")
-        --[[ print("canceling")
-       animation.cancel(self, groupname) ]]
-        I.AnimationController.playBlendedAnimation(groupname, {
-            startkey = string.gsub(options.startkey, "chop", "chop1"),
-            stopkey = string.gsub(options.stopkey, "chop", "chop1"),
-            priority = animation.PRIORITY.Weapon
-        })
+
+    if groupname == "runforward1h" then
+        -- Learn usual options of a running anim
+        if not runAnimOpts then
+            runAnimOpts = gutils.shallowTableCopy(options)
+        end
+    end
+
+    -- if groupname == "idle1h" then
+    --     animation.cancel(omwself,"runbounce")
+    -- end
+
+    if groupname == "weapononehand" or groupname == "weapononehand1" then
+        overrideWalk = true
+    end
+
+    if groupname == "weapononehand" and isSupportedAttackType(options.startkey, "start") then
+        attackNum = attackNum + 1
+        if attackNum % 2 == 1 then
+            print("Should override next")
+            shouldOverride = true
+        else
+            shouldOverride = false
+        end
+    end
+
+    if shouldOverride and groupname == "weapononehand" and isSupportedAttackType(options.startkey) then
+        --print("canceling")
+
+        --Canceling doesnt work here, prob its not even playing yet
+        print("Overriding")
+
+        I.AnimationController.playBlendedAnimation(groupname .. "1", options)
+
+        options.priority = 12
+        options.blendmask = 0
+
+        -- scheduledAnim = {
+        --     groupname = groupname,
+        --     options = options
+        -- }
     end
 end)
+
+
+local function onUpdate()
+    if scheduledAnim then
+        I.AnimationController.playBlendedAnimation(scheduledAnim.groupname .. "1", scheduledAnim.options)
+        scheduledAnim = nil
+    end
+
+    if animManager.isPlaying("runforward1h") then
+        if animManager.isPlaying("weapononehand") and not animManager.isPlaying("runbounce") then
+            animation.cancel(omwself, "runforward1h")
+            local newOpts = gutils.shallowTableCopy(runAnimOpts)
+            newOpts.priority = 1
+            newOpts.blendmask = 0
+            I.AnimationController.playBlendedAnimation("runforward1h", newOpts)
+            I.AnimationController.playBlendedAnimation("runbounce", runAnimOpts)
+        end
+    else
+        animation.cancel(omwself, "runbounce")
+    end
+
+    if not animManager.isPlaying("runforward1h") then
+        animation.cancel(omwself, "runbounce")
+    end
+
+    if not animManager.isPlaying("weapononehand") then
+        animation.cancel(omwself, "weapononehand1")
+    end
+end
+
+
+return {
+    engineHandlers = {
+        onUpdate = onUpdate,
+    }
+}

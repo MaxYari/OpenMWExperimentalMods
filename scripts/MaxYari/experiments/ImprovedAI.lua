@@ -22,7 +22,7 @@ local I = require('openmw.interfaces')
 
 -- 3rd party libs
 -- Setup important global functions for the behaviourtree 2e module to use--
-local BT = require('scripts.MaxYari.behaviourtreelua2e.lib.behaviour_tree')
+local BT = require('scripts.behaviourtreelua2e.lib.behaviour_tree')
 local json = require(mp .. "libs/json")
 local luaRandom = require(mp .. "libs/randomlua")
 ----------------------------------------------------------------------------
@@ -33,8 +33,10 @@ DebugLevel = 2
 local fCombatDistance = core.getGMST("fCombatDistance")
 local fHandToHandReach = core.getGMST("fHandToHandReach")
 
-if core.API_REVISION < 64 then error(
-   "Can not start Mercy: CAO, newer version of lua API is required. Please update OpenMW.") end
+if core.API_REVISION < 64 then
+   error(
+      "Can not start Mercy: CAO, newer version of lua API is required. Please update OpenMW.")
+end
 
 
 -- And the story begins!
@@ -181,7 +183,7 @@ local function randomiseInclinations()
 end
 
 
--- Functions to determine if its time to flee/ask for mercy
+-- Functions to determine if its time to retreat/ask for mercy
 -- Function to interpolate probability based on level difference
 local function levelBasedScaredProb()
    -- Author: Mostly ChatGPT 2024
@@ -253,11 +255,9 @@ end
 
 
 
-
--- STARTING EVERYTHING -------------------
-
 -- Parsing JSON behaviourtree -----
 ----------------------------------
+gutils.print("Reading Behavior3 project")
 -- Read the behaviour tree JSON file exported from the editor---------------
 local file = vfs.open("scripts/MaxYari/experiments/OpenMW AI.b3")
 if not file then error("Failed opening behaviour tree file.") end
@@ -267,13 +267,72 @@ local projectJsonTable = json.decode(file:read("*a"))
 file:close()
 ----------------------------------------------------------------------------
 
--- Initialise behaviour trees ----------------------------------------------
-gutils.print("Loading Behavior3 project")
-local bTrees = BT.LoadBehavior3Project(projectJsonTable, state)
-bTrees.Combat:setDebugLevel(0)
-bTrees.CombatAux:setDebugLevel(0)
-bTrees.Locomotion:setDebugLevel(0)
--- Ready to use! -----------------------------------------------------------
+
+
+local extensions = {}
+
+local extensionWrapperNode = function(config)
+   return BT.Task:new(config)
+end
+
+-- This function checks if an extension should be added to a node, and if so - adds it.
+local function maybeInjectExtensions(node, treeName)
+   if node.properties.extensionPoint and node.properties.extensionPoint() then
+      if not node.childNodes then
+         error(
+            "Non-composite node is marked as an extension (extensionPoint property). This should never happen. If you are using an 'extensionPoint' property on your node - don't, it's reserved.")
+      end
+      local extensionPoint = node.properties.extensionPoint()
+      if extensions[treeName] and extensions[treeName][extensionPoint] then
+         local extensionObjs = extensions[treeName][extensionPoint]
+         for _, extensionObj in ipairs(extensionObjs) do
+            extensionObj.isUsed = true
+            gutils.print("Found an extension", extensionObj.name, "for an extension point", treeName, extensionPoint, 0)
+            table.insert(node.childNodes, 1, extensionWrapperNode(extensionObj))
+            print("Now child nodes:", #node.childNodes)
+         end
+      end
+   end
+end
+
+local function checkExtensionsWarning()
+   -- Check if all extensions been used, shout warning if not
+   for treeName, tagObj in pairs(extensions) do
+      for tagName, extensionObjs in pairs(tagObj) do
+         for _, extensionObj in ipairs(extensionObjs) do
+            if not extensionObj.isUsed then
+               gutils.print("WARNING: extension", extensionObj.name, "was not used since an extension point", treeName,
+                  tagName,
+                  "is no present in the behaviour tree. Make sure that you use the correct tree and extension point names.")
+            end
+         end
+      end
+   end
+end
+
+local bTrees = nil
+
+local function STARTEVERYTHING()
+   -- STARTING EVERYTHING -------------------
+   -- Initialise behaviour trees ----------------------------------------------
+   bTrees = BT.LoadBehavior3Project(projectJsonTable, state, function(nodeConfig, treeData)
+      -- Inject extensions (child nodes) into parent node's initialisation data if need be
+      maybeInjectExtensions(nodeConfig, treeData.title)
+   end)
+
+   checkExtensionsWarning()
+
+   bTrees.Combat:setDebugLevel(0)
+   bTrees.CombatAux:setDebugLevel(0)
+   bTrees.Locomotion:setDebugLevel(1)
+   -- Ready to use! -----------------------------------------------------------
+
+   -- Rndomising key npc factors
+   luaRandom:randomseed(gutils.stringToHash(omwself.recordId))
+   randomiseInclinations()
+end
+
+
 
 
 
@@ -290,28 +349,25 @@ AvengeShoutProb = 0.5
 -- CanGoHamProb = 1
 -- BaseFriendFightVal = 30
 -- AvengeShoutProb = 1
-
-
 local lastWeaponRecord = { id = "_" }
 local lastAiPackage = { type = nil }
 local lastAiOverrideState = false
 local lastHealth = selfActor.stats.dynamic:health().current
 local lastDeadState = nil
 local lastGoHamCheck = 0
-local fleedOnce = false
+local retreatedOnce = false
 local askedForMercyOnce = false
 local stoodGroundOnce = false
-
--- Rndomising key npc factors
-luaRandom:randomseed(gutils.stringToHash(omwself.recordId))
-randomiseInclinations()
-
-
-
+local firstUpdate = true
 
 -- Main update function (finally) --
 ------------------------------------
 local function onUpdate(dt)
+   if firstUpdate then
+      STARTEVERYTHING()
+      firstUpdate = false
+   end
+
    -- Always track HP, for damage events
    local currentHealth = selfActor.stats.dynamic:health().current
    local damageValue = lastHealth - currentHealth
@@ -329,7 +385,7 @@ local function onUpdate(dt)
       end)
    end
 
-   -- Sending on Death events
+   -- Sending FriendDead events
    local deathState = selfActor:isDead()
    if lastDeadState ~= nil and lastDeadState ~= deathState then
       if deathState then
@@ -341,18 +397,19 @@ local function onUpdate(dt)
    end
    lastDeadState = deathState
 
-   -- Only modify AI if it's in combat and is melee and not a caster and not dead!
+   -- Only modify AI if it's in combat and is melee and not a caster and not dead... and not a vampire (they are also casters)!
    local AiOverrideState = true
    local activeAiPackage = AI.getActivePackage()
    local enemyActor = AI.getActiveTarget("Combat")
    if not activeAiPackage or activeAiPackage.type ~= "Combat" or types.Actor.isDead(activeAiPackage.target) or gutils.imASpellCaster() or selfActor:isVampire() or selfActor:isRanged() or selfActor:isDead() then
       AiOverrideState = false
    end
+   if not activeAiPackage then activeAiPackage = { type = nil } end
 
    -- Storing combat targets in history
    gutils.addTargetsToHistory(I.AI.getTargets("Combat"))
 
-   -- If we started overriding AI - determine which combat state to begin in
+   -- When we switch to combat - determine if we want to be hesitant (stand ground) or engage right away
    if lastAiPackage.type ~= activeAiPackage.type and activeAiPackage.type == "Combat" then
       -- Initialising combat state
       local isGuard = gutils.imAGuard()
@@ -370,6 +427,7 @@ local function onUpdate(dt)
       end
    end
 
+   -- If Ai override state just changed but AI package was already combat for some time - we switched mid combat, no standing ground
    if AiOverrideState and AiOverrideState ~= lastAiOverrideState then
       core.sound.stopSay(omwself);
       -- If ai override happened in middle of combat - ensure that we won't go into STAND_GROUND state
@@ -381,9 +439,10 @@ local function onUpdate(dt)
    lastAiPackage = activeAiPackage
    lastAiOverrideState = AiOverrideState
 
-   -- Disabling AI so everything can be controlled by the ~Mercy~
+   -- Disabling AI so everything can be controlled by ~Mercy~
    omwself:enableAI(not AiOverrideState)
-   -- If we are NOT overriding AI - leave
+
+   -- If we are NOT overriding AI - leave, vanilla AI will work as usual
    if not AiOverrideState then return end
 
 
@@ -393,7 +452,6 @@ local function onUpdate(dt)
 
    state.dt = dt
    state.enemyActor = enemyActor
-
    if state.enemyActor then
       state.range = gutils.getDistanceToBounds(omwself, state.enemyActor)
    else
@@ -420,9 +478,7 @@ local function onUpdate(dt)
    end
 
    -- Determine movement speed
-   --local walkSpeed = selfActor:getWalkSpeed()
-   --state.slowSpeed = gutils.lerp(walkSpeed * 0.5, walkSpeed, speedFactor)
-   --state.menaceSpeed = state.slowSpeed * 0.66
+   -- Initial idea was to have 2 different degrees of slow speed, but at the end it turned out to be unnecessary
    state.slowSpeed = 85 + 25 * state.slowSpeedFactor
    state.menaceSpeed = state.slowSpeed
 
@@ -437,21 +493,21 @@ local function onUpdate(dt)
       state.staggerGroup = nil
    end
 
-   -- Check for fleeing/mercy
-   local scared = isSelfScared(damageValue) -- Since this tracks lastHP - better check it every frame
+   -- Check for reatreating/mercy
+   local scared = isSelfScared(damageValue)
    if (state.combatState == enums.COMBAT_STATE.FIGHT or state.combatState == enums.COMBAT_STATE.STAND_GROUND) and scared then
       local potentialStates = {}
-      if not fleedOnce then table.insert(potentialStates, enums.COMBAT_STATE.FLEE) end
+      if not retreatedOnce then table.insert(potentialStates, enums.COMBAT_STATE.RETREAT) end
       if not askedForMercyOnce then table.insert(potentialStates, enums.COMBAT_STATE.MERCY) end
       if #potentialStates > 0 then
          local newState = potentialStates[math.random(1, #potentialStates)]
          state.combatState = newState
-         if state.combatState == enums.COMBAT_STATE.FLEE then fleedOnce = true end
+         if state.combatState == enums.COMBAT_STATE.RETREAT then retreatedOnce = true end
          if state.combatState == enums.COMBAT_STATE.MERCY then askedForMercyOnce = true end
       end
    end
 
-   -- Check for going ham
+   -- Check for going ham. I.e spamming attack in response to player's attack spam.
    if state.combatState == enums.COMBAT_STATE.FIGHT and state.canGoHam and not state.goingHam then
       -- Whenever we are damaged, but not more frequent than once 0.25 sec
       if damageValue > 0 and now - lastGoHamCheck >= 0.25 then
@@ -473,6 +529,7 @@ local function onUpdate(dt)
 
    -- Running behaviour trees! -----------------------------
    ---------------------------------------------------------
+   if bTrees == nil then return error("Behaviour trees are nil, something went wrong on initialisation.") end
    bTrees["Combat"]:run()
    bTrees["CombatAux"]:run()
    bTrees["Locomotion"]:run()
@@ -489,7 +546,7 @@ local function onUpdate(dt)
    omwself.controls.jump = state.jump
 
    -- If no lookDirection provided - default behaviour is to stare at the enemy
-   -- If an attack is in progress - force look at the enemyActor
+   -- If an attack is in progress - force look at enemyActor
    local lookDirection
    if state.attackState == enums.ATTACK_STATE.NO_STATE then
       lookDirection = state.lookDirection
@@ -498,10 +555,15 @@ local function onUpdate(dt)
       lookDirection = state.enemyActor.position - omwself.position
    end
    if lookDirection then
+      -- Actual rotation is changed somewhat gradually
       omwself.controls.yawChange = gutils.lerpClamped(0,
          -moveutils.lookRotation(omwself, omwself.position + lookDirection), dt * 3)
    end
 end
+
+
+-- Events from other actors -------------------------------------------------------
+-----------------------------------------------------------------------------------
 
 -- TO DO: Test this again, last time I was fighting vanilla ai actor - friends were ignoring that.
 -- Also if you miss with ranged - theyll ignore that as well
@@ -523,10 +585,12 @@ local function onFriendDead(e)
 end
 
 
--- Animation handlers --------
-------------------------------
+
+-- Animation handlers -------------------------------------------------------------
+-----------------------------------------------------------------------------------
 I.AnimationController.addPlayBlendedAnimationHandler(function(groupname, options)
    --print("New animation started! " .. groupname .. " : " .. options.startkey .. " --> " .. options.stopkey)
+   -- Detect being staggered
    if gutils.stringStartsWith(groupname, "hit") then
       state.staggerGroup = groupname
    end
@@ -536,9 +600,9 @@ end)
 I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    --print("Animation text key! " .. groupname .. " : " .. key)
    --print("Position of the key: " .. tostring(animation.getTextKeyTime(omwself.object, groupname .. ": " .. key)))
-   if state.combatState == enums.COMBAT_STATE.FIGHT then
-      --print(groupname, key)
-   end
+   -- if state.combatState == enums.COMBAT_STATE.FIGHT then
+   --    print(groupname, key)
+   -- end
 
    if string.find(key, "chop start") or string.find(key, "thrust start") or string.find(key, "slash start") then
       state.attackState = enums.ATTACK_STATE.WINDUP_START
@@ -573,11 +637,22 @@ I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
    end
 end)
 
--- Engine handlers -----------
-------------------------------
+
+
+-- Engine handlers ------------------------------------------------------------
+-------------------------------------------------------------------------------
 return {
    engineHandlers = {
       onUpdate = onUpdate,
    },
    eventHandlers = { FriendDamaged = onFriendDamaged, FriendDead = onFriendDead },
+   interfaceName = "MercyCAO",
+   interface = {
+      version = 1,
+      addExtension = function(treeName, extensionPoint, extensionConfig)
+         if not extensions[treeName] then extensions[treeName] = {} end
+         if not extensions[treeName][extensionPoint] then extensions[treeName][extensionPoint] = {} end
+         table.insert(extensions[treeName][extensionPoint], extensionConfig)
+      end,
+   }
 }

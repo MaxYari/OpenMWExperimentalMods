@@ -75,6 +75,27 @@ end)
 
 
 local function onUpdate()
+    print("Completion:",animation.getCompletion(omwself, "bowandarrow"))
+    
+
+    local shootHoldTime = animation.getTextKeyTime(omwself, "bowandarrow: shoot max attack")
+    local currentTime = animation.getCurrentTime(omwself, "bowandarrow")
+
+    if currentTime and math.abs(shootHoldTime-currentTime) < 0.001  then
+        if not animManager.isPlaying("bowandarrow1") then
+            I.AnimationController.playBlendedAnimation("bowandarrow1", {
+                startkey = "tension start",
+                stopkey = "tension end",
+                loops = 999,
+                forceloop = true,
+                autodisable = false,
+                priority = animation.PRIORITY.Block
+            })
+        end
+    else
+        animation.cancel(omwself, "bowandarrow1")
+    end
+
     if scheduledAnim then
         I.AnimationController.playBlendedAnimation(scheduledAnim.groupname .. "1", scheduledAnim.options)
         scheduledAnim = nil

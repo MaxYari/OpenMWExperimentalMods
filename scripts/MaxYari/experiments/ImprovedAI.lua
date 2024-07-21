@@ -79,8 +79,8 @@ local state = {
       self.attack = 0
       self.movement = 0
       self.sideMovement = 0
-      self.range = 1e42
       self.lookDirection = nil
+      self.range = 1e42
    end,
 
    -- Functions to be used in the editor

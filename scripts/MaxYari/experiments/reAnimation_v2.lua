@@ -119,8 +119,9 @@ local animations = {
         groupname = "weapononehand1",
         condition = function(self)
             local startKey = self.parentOptions.startkey or self.parentOptions.startKey
+            if not isAttackType(startKey) then return false end
             local counterKey = self.parent .. isAttackType(startKey)
-            return isAttackType(startKey) and attackCounters[counterKey] == 1
+            return attackCounters[counterKey] == 1
         end,
         options = function(self)
             --For some reason being hit interrupts this override

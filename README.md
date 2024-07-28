@@ -7,9 +7,10 @@ Experimental mods for OpenMW, quite often made to test the latest OpenMW develop
 ## How to install
 - Place the contents of this repository into your ".../Morrowind/Data Files" folder.
 - For *Mercy: CAO* you have to install [this behaviourtreelua2e dependency](https://github.com/MaxYari/behaviourtreelua2e). Unpack the contents of this repository directly into "...Morrowind/Data Files/scripts/behaviourtreelua2e". I.e repository files should be directly inside that `behaviourtreelua2e` folder.
-- (Don't need to do this one for Mercy: CAO) Register the "Data Files/scripts/MaxYari/Experiments" folder in your data directories. The most user-friendly way to do that is via OpenMW launcher "Data Directories" tab. Use "Append" button there.
-![alt text](/imgs/datadirectories.png)
 - After that enable the .omwscript file in "Content Files" tab of the launcher. Since this is a collection of mods - there will be multiple .omwscript files, I'm assuming you already know which mod you want to try/test. Enabling all of them at the same time might break something... or not.
+
+If you dont see the .omwscript file you are looking for - in the launcher - probably i havent moved it outside the scripts folder yet. You have to register my scripts folder in your Data Directorieslike this:
+![Data directories](/imgs/datadirectories.png)
 
 
 Have fun!
@@ -17,14 +18,20 @@ Have fun!
 ## Credit
 
 Physics sound effects by a dear friend https://nimsound.ru/
+ElevenLabs-generated voice lines by [vonwolfe](https://next.nexusmods.com/profile/vonwolfe).
 
 ## Mods
+
+### reAnimation - v2: Rogue
+
+![reAnimation banner](/imgs/reanim_banner_long.png)
+
+An updtae to reAnimation retouching on 1-handed, bows and daggers. Daggers have unique walk cycles and idles, every retouched weapon has unique sneak idle. 1-handed weapons daggers have alternating attack animations. *Strongly* recommended to be used with "Smooth animation transitions" enabled in the launcher (Launcher -> Settings -> Visual -> Smooth animation transitions, should be present in the latest dev build)
 
 ### Mercy: CAO
 
 Mercy: Combat AI Overhaul. 
-A significant overhaul of in-combat NPC behavior using custom lua behavior trees library, with new voice lines and animations. Only melee NPCs are affected.
-New unique ElevenLabs-generated voice lines by [vonwolfe](https://next.nexusmods.com/profile/vonwolfe).
+A significant overhaul of in-combat NPC behavior using custom lua behavior trees library, with new voice lines and animations. Only melee NPCs are affected. New combat voicelines (currently only for dunmer and nord).
 
 #### Extending Mercy: CAO
 

@@ -272,9 +272,33 @@ end
 module.lerpClamped = lerpClamped
 
 
+local function isMarksmanWeapon(weapon)
+    if not weapon then return false end
+    local weaponRecord = types.Weapon.record(weapon.recordId)
+    return weaponRecord.type == types.Weapon.TYPE.MarksmanBow or
+        weaponRecord.type == types.Weapon.TYPE.MarksmanCrossbow or
+        weaponRecord.type == types.Weapon.TYPE.MarksmanThrown
+end
+module.isMarksmanWeapon = isMarksmanWeapon
 
+local function isAShield(armor)
+    if not armor then return false end
+    local armorRecord = types.Armor.record(armor.recordId)
+    if not armorRecord then return false end
+    return armorRecord.type == types.Armor.TYPE.Shield
+end
+module.isAShield = isAShield
+
+
+---- Actor class wrapper --------------------------------------------------------
 local Actor = {}
 Actor.__index = Actor
+Actor.DET_STANCE = {
+    Nothing = "Nothing",
+    Spell = "Spell",
+    Marksman = "Marksman",
+    Melee = "Melee"
+}
 
 function Actor:new(go, omwClass)
     if not omwClass then omwClass = types.Actor end
@@ -304,6 +328,7 @@ function Actor:__index(key)
     end
 end
 
+
 function Actor:getDumpableInventoryItems()
     -- data.actor, data.position
     local items = {}
@@ -320,35 +345,51 @@ function Actor:getDumpableInventoryItems()
     return items
 end
 
-function Actor:isRanged()
-    -- Check if enemy actor is ranged
-    local weaponObj = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
-    local weaponRecord
-    if weaponObj then
-        weaponRecord = types.Weapon.record(weaponObj.recordId)
-    end
-    local stance = self:getStance()
-
-    if weaponRecord and (weaponRecord.type == types.Weapon.TYPE.MarksmanBow or
-            weaponRecord.type == types.Weapon.TYPE.MarksmanCrossbow or
-            weaponRecord.type == types.Weapon.TYPE.MarksmanThrown) then
-        return true
-    elseif stance == types.Actor.STANCE.Spell then
-        return true
-    end
-
-    return false
-end
-
-function Actor:isMelee()
-    return not self:isRanged()
-end
-
+-- Archetype determining functions
 function Actor:isVampire()
     -- Based on Urm's function
     local vampirism = self:activeEffects():getEffect('vampirism')
     local isVampire = not vampirism or vampirism.magnitude > 0
     return isVampire
+end
+
+local castingSkills = { "conjuration", "alteration", "destruction", "mysticism", "restoration" }
+function Actor:isSpellCaster()
+    if not types.NPC.objectIsInstance(self.gameObject) then return false end
+    local className = types.NPC.record(self.gameObject.recordId).class
+    local majorSkills = types.NPC.classes.record(className).majorSkills
+    for _, skillName in ipairs(majorSkills) do
+        if foundInList(castingSkills, skillName) then return true end
+    end
+
+    return self:isVampire()
+end
+
+function Actor:isMarksman()
+    local weapons = self:inventory():getAll(types.Weapon)
+    for i, weapon in pairs(weapons) do
+        if isMarksmanWeapon(weapon) then return true end
+    end
+end
+
+function Actor:isWarrior()
+    return not self:isSpellCaster() and not self:isMarksman()
+end
+
+function Actor:getDetailedStance()
+    local stance = self:getStance()
+    if stance == types.Actor.STANCE.Nothing then
+        return Actor.DET_STANCE.Nothing
+    elseif stance == types.Actor.STANCE.Spell then
+        return Actor.DET_STANCE.Spell
+    elseif stance == types.Actor.STANCE.Weapon then
+        local weapon = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+        if isMarksmanWeapon(weapon) then
+            return Actor.DET_STANCE.Marksman
+        else
+            return Actor.DET_STANCE.Melee
+        end
+    end
 end
 
 function Actor:canOpenDoor(door)
@@ -367,7 +408,7 @@ end
 
 module.Actor = Actor
 
-
+--------------------------------------------------------------------------------
 
 
 
@@ -467,17 +508,6 @@ local function imAGuard()
 end
 module.imAGuard = imAGuard
 
-local castingSkills = { "conjuration", "alteration", "destruction", "mysticism", "restoration" }
-local function imASpellCaster()
-    if not types.NPC.objectIsInstance(omwself) then return false end
-    local className = types.NPC.record(omwself.recordId).class
-    local majorSkills = types.NPC.classes.record(className).majorSkills
-    for _, skillName in ipairs(majorSkills) do
-        if foundInList(castingSkills, skillName) then return true end
-    end
-    return false
-end
-module.imASpellCaster = imASpellCaster
 
 local targetsHistory = {}
 local function addTargetsToHistory(targets)

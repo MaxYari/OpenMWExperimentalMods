@@ -1,5 +1,0 @@
-NordFCombatDowntime1 - too complex? "Elf and" sound like an "elephant"
-NordFCombatDowntime4 - too complex?
-NordFMercyDisarm5 - sounds too insulted/doesnt fit the context
-NordFRetreat3 - "Allies to me" probably doesnt make much sense when character is running for their life
-NordFMercyDisengage4 - probably pushing it too far for a person who just surrendered

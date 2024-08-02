@@ -23,8 +23,8 @@ Physics sound effects by a dear friend https://nimsound.ru/
 
 Looking for mods that were previously here? They got mature enough to move to dwellings of their own:
 
-[Mercy: Combat AI Overhaul](Link is coming)
-[ReAnimations first-person v2: Rogue](Link is coming)
+[Mercy: Combat AI Overhaul](https://github.com/MaxYari/OpenMWMercyCAO)
+[ReAnimations first-person v2: Rogue](https://github.com/MaxYari/OpenMWReAnimation)
 
 
 ### PhysicsInteractions

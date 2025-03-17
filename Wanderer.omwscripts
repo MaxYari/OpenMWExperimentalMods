@@ -1,0 +1,2 @@
+GLOBAL: scripts\MaxYari\experiments\WandererGlobal.lua
+CUSTOM: scripts\MaxYari\experiments\WandererNPC.lua

@@ -1,0 +1,20 @@
+{
+    "name": "wanderer-server",
+    "version": "1.0.0",
+    "description": "A Node.js server for handling wanderers in a game.",
+    "main": "scripts/MaxYari/WandererNode/WandererServer.js",
+    "scripts": {
+        "start": "node scripts/MaxYari/WandererNode/WandererServer.js"
+    },
+    "dependencies": {
+        "@google-cloud/firestore": "^5.0.0",
+        "express": "^4.17.1",
+        "socket.io": "^4.0.0",
+        "uuid": "^8.3.2",
+        "js-yaml": "^4.1.0",
+        "axios": "^0.21.1",
+        "socket.io-client": "^4.0.0"
+    },
+    "author": "",
+    "license": "ISC"
+}

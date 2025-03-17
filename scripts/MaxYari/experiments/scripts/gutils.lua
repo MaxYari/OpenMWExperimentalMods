@@ -1,8 +1,10 @@
 local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
+local markup = require('openmw.markup')
 local status, omwself = pcall(require, "openmw.self")
 local status, nearby = pcall(require, "openmw.nearby")
+local status, vfs = pcall(require, "openmw.vfs")
 
 local fFightDispMult = core.getGMST("fFightDispMult")
 
@@ -548,5 +550,24 @@ local function stringStartsWith(String, Start)
 end
 
 module.stringStartsWith = stringStartsWith
+
+local function readYamlFile(path)   
+    local parsedData = {} 
+    if vfs.fileExists(path) then
+        local fileHandle, err = vfs.open(path)
+        if fileHandle then
+            local yamlContent = fileHandle:read("*all")
+            fileHandle:close()
+            parsedData = markup.decodeYaml(yamlContent)            
+        else
+            print("Error opening file:", err)
+        end
+    else
+        print("File does not exist:", path)
+    end
+    return parsedData
+end
+
+module.readYamlFile = readYamlFile
 
 return module

@@ -26,20 +26,12 @@ function writeYamlToFile(path, data) {
     console.log(`Written to file: ${path}`);
 }
 
-function readYamlFile(path) {
-    try {
-        const fileContent = fs.readFileSync(path, 'utf8');
-        return yaml.load(fileContent);
-    } catch (e) {
-        console.error('Error reading YAML file:', e);
-        return null;
-    }
-}
 
 
 // Start the separate process and capture its stdout
 console.log('Starting OpenMW.');
 const exeProcess = spawn(openMwPath);
+
 
 exeProcess.stdout.on('data', (data) => {
     const line = data.toString().trim();

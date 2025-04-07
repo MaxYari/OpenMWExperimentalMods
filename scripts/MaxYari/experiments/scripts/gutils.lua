@@ -273,6 +273,18 @@ local function lerpClamped(a, b, t)
 end
 module.lerpClamped = lerpClamped
 
+local function lerpAngle(a1, a2, t)
+    local diff = a2 - a1
+    if diff > math.pi then
+        diff = diff - 2 * math.pi
+    elseif diff < -math.pi then
+        diff = diff + 2 * math.pi
+    end
+    return a1 + diff * t
+end
+
+module.lerpAngle = lerpAngle
+
 
 local function isMarksmanWeapon(weapon)
     if not weapon then return false end

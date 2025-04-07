@@ -112,6 +112,10 @@ end
 
 local lastCell = nil
 
+
+
+local fileHandle, err
+
 local function onUpdate(dt)
     local player = world.players[1]
     if player.cell ~= lastCell then

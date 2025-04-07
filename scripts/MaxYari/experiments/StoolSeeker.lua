@@ -2,8 +2,12 @@ local core = require('openmw.core')
 local nearby = require('openmw.nearby')
 local util = require('openmw.util')
 local self = require('openmw.self')
+local I = require('openmw.interfaces')
+local anim = require('openmw.animation')
+local ai = require('openmw.interfaces').AI
 
 local stool = nil
+local isSittingDown = false
 
 local function determineBenchOrientationAndLength(bench)
     local center = bench.position
@@ -93,7 +97,7 @@ local function determineFacingDirection(sitPosition, orientation)
     end
 end
 
-local function onSitDownPlease(data)
+local function onConsiderTheStool(data)
     stool = data.stool
     local from = stool.position + util.vector3(0, 0, 100)
     local to = stool.position
@@ -110,10 +114,30 @@ local function onSitDownPlease(data)
         local facingDirection = determineFacingDirection(result.hitPos, nil)
         core.sendGlobalEvent("StoolCheckResult", { npc = self.object, hitPos = result.hitPos, facingDirection = facingDirection, usable = usable })
     end
+
+    
+end
+
+local function onSitDownPlease()
+    -- Start sitting animation
+    if isSittingDown then return end
+    isSittingDown = true
+    I.AnimationController.playBlendedAnimation('sitidle1', { loops = 999, forceLoop = true, priority = anim.PRIORITY.Scripted })
+end
+
+
+local function onUpdate(dt)
+    if isSittingDown then
+        self.controls.yawChange = 0
+    end
 end
 
 return {
+    engineHandlers = {
+        onUpdate = onUpdate
+    },
     eventHandlers = {
+        ConsiderTheStool = onConsiderTheStool,
         SitDownPlease = onSitDownPlease
     }
 }

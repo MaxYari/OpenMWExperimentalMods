@@ -1,0 +1,277 @@
+local core = require('openmw.core')
+local util = require('openmw.util')
+local types = require('openmw.types')
+local nearby = require('openmw.nearby')
+local ui = require('openmw.ui')
+local camera = require('openmw.camera')
+local omwself = require('openmw.self')
+local gutils = require('scripts/MaxYari/experiments/scripts/gutils')
+
+local Gravity = util.vector3(0, 0, -9.8*72)
+local SleepSpeed = 7
+local SleepTime = 1
+local RotationalDamping = 0.5 -- Damping factor for angular velocity
+local ImpactTorqueMult = 0.5 -- Multiplier for angular velocity impact
+local MaxAngularVelocity = 5000 -- Optional: Maximum angular velocity limit
+
+-- Utilities ------------------------------------------------------
+-------------------------------------------------------------------
+-- Calculate sphere position along the ray based on sphere cast hit position
+local function calcSpherePosAtHit(from, to, hitPos, radius) 
+    local c = hitPos
+    local r = radius
+    local o = from
+    local u = (to - from):normalize()
+    local v1 = util.vector3(1, 1, 1)
+    local dist = 0
+
+    local Det = 0
+    local dist1 = 0
+    local dist2 = 0
+
+    if (from - hitPos):length() < radius then        
+        dist = 0
+        goto out
+    end
+    
+    Det = u:dot(o - c)^2 - (o - c):length()^2 + r * r
+    
+    if Det < 0 and Det > -0.1 then Det = 0
+    elseif Det <= -0.1 then 
+        dist = 0 
+        goto out
+    end
+
+    dist1 = - u:dot(o - c) + math.sqrt(Det)
+    dist2 = - u:dot(o - c) - math.sqrt(Det)
+    
+    if dist1 < 0 and dist2 < 0 then        
+        dist = 0
+        goto out
+    end
+
+    if dist1 < 0 then dist = dist2
+    elseif dist2 < 0 then dist = dist1
+    else dist = math.min(dist1, dist2) end
+
+    ::out::
+
+    local pos = o + u * dist
+    
+    return pos
+end
+
+-- Custom implementation of identity rotation
+local function identityRotation()
+    return util.transform.rotate(0, util.vector3(0, 0, 1)) -- No rotation
+end
+
+-- Custom implementation of slerp for rotations (interpolates all axes)
+local function slerpRotation(from, to, t)
+    local fZ, fY, fX = from:getAnglesZYX()
+    local tZ, tY, tX = to:getAnglesZYX()
+
+    local lpZ = util.remap(t, 0, 1, fZ, tZ)
+    local lpY = util.remap(t, 0, 1, fY, tY)
+    local lpX = util.remap(t, 0, 1, fX, tX)
+    return util.transform.rotateX(lpX) * util.transform.rotateY(lpY) * util.transform.rotateZ(lpZ)
+end
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+
+
+-- PhysicsObject class -----------------------------------------------------
+----------------------------------------------------------------------------
+local PhysicsObject = {}
+
+function PhysicsObject:new(object, properties)
+    local inst = {}
+    setmetatable(inst, self)
+    self.__index = self
+
+    print("Creating a physics object for: ", object)
+
+    local box = object:getBoundingBox()
+    
+    local radius = math.min(box.halfSize.x, box.halfSize.y, box.halfSize.z)
+    if radius < 2 then radius = 2 end
+    
+    local offset
+    local startPos
+    if properties.origin then
+        offset = -properties.origin
+        startPos = object.position - object.rotation:apply(offset)
+    else 
+        offset = object.rotation:inverse():apply(object.position - box.center)
+        startPos = box.center
+    end
+    
+    inst.object = object;
+    inst.position = startPos;
+    inst.rotation = object.rotation;
+    inst.offset = offset;
+    inst.velocity = util.vector3(0, 0, 0);
+    inst.angularVelocity = util.vector3(0, 0, 0); -- Add angular velocity
+    inst.radius = radius;
+    inst.mass = properties.mass or 1;
+    inst.drag = properties.drag or 0.33;
+    inst.angularDrag = properties.angularDrag or 0.1; 
+    inst.bounce = properties.bounce or 0.5;
+    inst.onCollision = properties.onCollision or nil;
+    inst.isSleeping = true
+
+    return inst
+end
+
+function PhysicsObject:wakeUp()
+    self.isSleeping = false
+    self.sleepTimer = 0 -- Reset sleep timer when waking up
+end
+
+function PhysicsObject:applyImpulse(impulse) 
+    self.velocity = self.velocity + impulse / self.mass
+    self:wakeUp() -- Wake up the object when an impulse is applied
+end
+
+function PhysicsObject:isCollidingWith(physObject)
+    local distance = (self.position - physObject.position):length()
+    return distance < (self.radius + physObject.radius)
+end
+
+function PhysicsObject:handleCollision(hitResult)
+    local normal = hitResult.hitNormal
+    local velocity = self.velocity
+    local dot = velocity:dot(normal)
+    if dot < 0 then
+        -- Reflect velocity and apply bounce factor
+        self.velocity = -(normal * normal:dot(velocity) * 2 - velocity)
+        self.velocity = self.velocity * self.bounce
+
+        -- Apply rotational damping
+        self.angularVelocity = self.angularVelocity * RotationalDamping
+
+        -- Calculate torque from collision impact
+        local impactPoint = hitResult.hitPos
+        local collisionNormal = hitResult.hitNormal
+        local relativePosition = impactPoint - self.position
+        local torque = relativePosition:cross(-self.velocity)
+        self.angularVelocity = self.angularVelocity + torque / self.mass * ImpactTorqueMult
+
+        -- Clamp angular velocity to prevent it from growing uncontrollably
+        if self.angularVelocity:length() > MaxAngularVelocity then
+            self.angularVelocity = self.angularVelocity:normalize() * MaxAngularVelocity
+        end
+    end
+end
+
+function PhysicsObject:handlePhysObjectCollision(physObject)
+    local data1 = self
+    local data2 = physObject
+
+    local normal = (data1.position - data2.position):normalize()
+    local relativeVelocity = data1.velocity - data2.velocity
+    local dot = relativeVelocity:dot(normal)
+    
+    if dot < 0 and math.abs(dot) > SleepSpeed then
+        -- print("Handling object collision", object1, object2, dot)
+        -- Calculate impulse magnitude
+        local impulseMagnitude = -(1 + math.min(data1.bounce, data2.bounce)) * dot / (1 / data1.mass + 1 / data2.mass)
+
+        -- Apply impulses to both objects
+        local impulse = normal * impulseMagnitude
+        data1.velocity = data1.velocity + impulse / data1.mass
+        data2.velocity = data2.velocity - impulse / data2.mass
+
+        data1:wakeUp()
+        data2:wakeUp()
+    end
+end
+
+function PhysicsObject:update(dt)
+    
+    if self.isSleeping then
+        return
+    end
+
+    --print("Internal Updating physics object: ", self.object)
+
+    -- Apply Gravity
+    self.velocity = self.velocity + Gravity * dt
+
+    -- Apply drag
+    self.velocity = self.velocity * (1 - self.drag * dt)
+
+    -- Calculate displacement
+    local displacement = self.velocity * dt
+    
+    -- Perform sphere raycast for collision detection with environment
+    local rayStart = self.position
+    local rayEnd = rayStart + displacement
+    local sphereHitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
+
+    -- Check for collisions with the environment (sphere)
+    if sphereHitResult.hit then
+        self:handleCollision(sphereHitResult)
+        self.position = calcSpherePosAtHit(rayStart, rayEnd, sphereHitResult.hitPos, self.radius)
+    else
+        self.position = rayEnd
+    end    
+
+    -- Apply angular drag to angular velocity
+    self.angularVelocity = self.angularVelocity * (1 - self.angularDrag * dt)
+    -- Update rotation based on angular velocity
+    local angularDisplacement = self.angularVelocity * dt * 0.01
+    local rotationDelta = util.transform.rotate(angularDisplacement:length(), angularDisplacement:normalize())
+    self.rotation = rotationDelta * self.rotation
+
+    -- Realign when close to rest state
+    if self.realignWhenRested then
+        -- FIX ME; rest is now based on speed, not anglar speed, so realignment will probably not work as intended
+        if not self.rotationInfluence then self.rotationInfluence = 0 end
+        local angularSpeed = self.angularVelocity:length()
+        if angularSpeed < 300 then
+            self.rotationInfluence = 1 - angularSpeed / 300
+            if self.rotationInfluence > 0 then
+                self.rotation = slerpRotation(self.rotation, identityRotation(), self.rotationInfluence)
+            end
+        else
+            self.rotationInfluence = 0
+        end
+    end
+
+    core.sendGlobalEvent("TeleportRequest", {
+        object = self.object,
+        position = self.position,
+        offset = self.offset,
+        rotation = self.rotation
+    })
+end
+
+function PhysicsObject:trySleep(dt)
+    if self.isSleeping then return end
+
+    if not self.lastPosition then self.lastPosition = self.position end
+    local actualVelocity = (self.position - self.lastPosition) / dt
+    local speed = actualVelocity:length()
+    if speed < SleepSpeed then
+        if not self.sleepTimer then
+            self.sleepTimer = 0
+        end
+        self.sleepTimer = self.sleepTimer + dt
+        if self.sleepTimer >= SleepTime then
+            self.isSleeping = true
+        end
+    else
+        self.sleepTimer = 0 -- Reset sleep timer if velocity or angular velocity exceeds threshold
+    end
+
+    self.lastPosition = self.position
+end
+
+return PhysicsObject
+
+
+
+
+
+

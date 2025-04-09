@@ -3,8 +3,9 @@ local types = require('openmw.types')
 local util = require('openmw.util')
 local markup = require('openmw.markup')
 local status, omwself = pcall(require, "openmw.self")
-local status, nearby = pcall(require, "openmw.nearby")
-local status, vfs = pcall(require, "openmw.vfs")
+local nstatus, nearby = pcall(require, "openmw.nearby")
+local vstatus, vfs = pcall(require, "openmw.vfs")
+local wstatus, world = pcall(require, "openmw.world")
 
 local fFightDispMult = core.getGMST("fFightDispMult")
 
@@ -237,6 +238,17 @@ local function randomDirection()
     return util.vector3(math.cos(angle), math.sin(angle), 0)
 end
 module.randomDirection = randomDirection
+
+local function vAbs(v)
+    return util.vector3(math.abs(v.x), math.abs(v.y), math.abs(v.z))
+end
+module.vAbs = vAbs
+
+local function vPow(v, p)
+    return util.vector3(v.x ^ p, v.y ^ p, v.z ^ p)
+end
+module.vPow = vPow
+
 
 local function minHorizontalHalfSize(bounds)
     return math.abs(math.min(bounds.halfExtents.x, bounds.halfExtents.y))
@@ -581,5 +593,17 @@ local function readYamlFile(path)
 end
 
 module.readYamlFile = readYamlFile
+
+local function spawnObject(recordId, position, cell, onGround)
+    if onGround == nil then onGround = true end
+    print("Spawning object:", recordId, position, cell, onGround)
+    local object = world.createObject(recordId, 1)
+    if object then
+        object:teleport(cell, position, { onGround = onGround})
+    end
+    return object
+end
+
+module.spawnObject = spawnObject
 
 return module

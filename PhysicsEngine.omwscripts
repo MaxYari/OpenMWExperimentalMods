@@ -1,2 +1,2 @@
-GLOBAL: scripts\MaxYari\experiments\PhysicsEngine.lua
+GLOBAL: scripts\MaxYari\experiments\PhysicsEngineGlobal.lua
 PLAYER: scripts\MaxYari\experiments\PhysicsEnginePlayer.lua

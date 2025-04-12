@@ -30,23 +30,68 @@ local function GrabObject()
     local object = castResult.hitObject
  
     if not object then return end
-    local physObject = it.DumbPhysics.getPhysicsObject(object)
-    if not physObject then return end
- 
-    activeObject = physObject
+    --local physObject = it.DumbPhysics.getPhysicsObject(object)
+    --if not physObject then return end
+    
+    activeObject = object
     holdDistance = (castResult.hitPos - position):length()
     holdOffset = castResult.hitPos - activeObject.position
  
-    ui.showMessage("Grabbing " .. activeObject.object.recordId)
- 
-    activeObject.object:sendEvent('GrabbedBy', { actor = omwself.object });
+    ui.showMessage("Grabbing " .. activeObject.recordId)
+    
+    
+    activeObject:sendEvent('GrabbedBy', { actor = omwself.object });
 end
 module.GrabObject = GrabObject
 
+
 local function DropObject()
+    --activeObject.ignorePhysObjectCollisions = false
+    --activeObject.ignoreWorldCollisions = false
     activeObject = nil
 end
 module.DropObject = DropObject
+
+local function HoldGrabbedObject(dt, ignoreCollisions)
+    if not activeObject then return end
+
+    --activeObject.ignorePhysObjectCollisions = ignoreCollisions
+    --activeObject.ignoreWorldCollisions = ignoreCollisions
+    
+    local position = camera.getPosition()
+    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
+    local objectHoldPos = position + direction*holdDistance;
+--[[ 
+    local currentVelocity = activeObject.velocity;
+    local pushVector = objectHoldPos - activeObject.position - currentVelocity/4;
+    
+    if pushVector:length() > maxDragImpulse then
+        pushVector = pushVector:normalize() * maxDragImpulse
+    end ]]
+
+    activeObject:sendEvent('MoveTo', { position = objectHoldPos, maxImpulse = maxDragImpulse })
+    
+    
+    
+    -- Note: offset will not work with this setup, we need to calculate push vector as a difference between current hold offset position (transformed) and screen center
+    -- Also: impulse offset uses local object space! But its not rotated? Just based on center of mass. So i need to save that offset together with initial rotation and then
+    -- each frame unrotate the offset and rotate it to the new rotation?
+    -- No i believe its applied to a non-rotated version, so it is on object local space. So i need to save it and to apply it properly also transform it by the object transform? Need to test this
+    -- No i thinks its actually NOT rotated, seems like all apply things are happening in a world space.
+    -- activeObject:applyImpulse(pushVector)
+
+    if input.isMouseButtonPressed(1) then
+        -- Calculating throw strength
+        local strength = types.Actor.stats.attributes.strength(omwself);
+        throwImpulse = util.clamp(util.remap(strength.modified, 40, 100, 500, 1500),750,1500);
+        print("Calculated throwImpulse " .. throwImpulse);
+
+        -- Launching!
+        activeObject:sendEvent("ApplyImpulse",{impulse=direction*throwImpulse})
+        DropObject()
+    end
+end
+module.HoldGrabbedObject = HoldGrabbedObject
 
 local function PushObjects()
     local position = camera.getPosition()
@@ -57,8 +102,8 @@ local function PushObjects()
 
     -- Iterate through all nearby items
     for _, object in ipairs(nearby.items) do
-        local physObject = it.DumbPhysics.getPhysicsObject(object)
-        if physObject and object:isValid() then
+        --local physObject = it.DumbPhysics.getPhysicsObject(object)
+        if object:isValid() then
             -- Calculate the vector from the camera position to the object
             local toObject = object.position - position
 
@@ -71,7 +116,7 @@ local function PushObjects()
                     -- Apply impulse to the object
                     local randomDirection = gutils.randomDirection()
                     local impulse = direction * impulseStrength + randomDirection * impulseStrength * 0.25
-                    physObject:applyImpulse(impulse)
+                    object:sendEvent("ApplyImpulse",{impulse=impulse})
                 end
             end
         end
@@ -96,8 +141,8 @@ local function ExplodeObjects()
 
     -- Iterate through all nearby items
     for _, object in ipairs(nearby.items) do
-        local physObject = it.DumbPhysics.getPhysicsObject(object)
-        if physObject and object:isValid() then
+        --local physObject = it.DumbPhysics.getPhysicsObject(object)
+        if object:isValid() then
             -- Calculate the distance from the object to the explosion center
             local toObject = object.position - explosionCenter
             local distance = toObject:length()
@@ -106,7 +151,7 @@ local function ExplodeObjects()
                 -- Calculate the explosion impulse
                 local directionAway = toObject:normalize()
                 local impulse = directionAway * (explosionForce * (1 - distance / explosionRadius))
-                physObject:applyImpulse(impulse)
+                object:sendEvent("ApplyImpulse",{impulse=impulse})
             end
         end
     end
@@ -115,12 +160,16 @@ local function ExplodeObjects()
 end
 module.ExplodeObjects = ExplodeObjects
 
-local function DupeObject()
+local function GetLookAtObject(dist)
     local position = camera.getPosition()
-    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
-    local pickupDistance = grabDistance
-    local castResult = nearby.castRenderingRay(position, position + direction * pickupDistance)
-    local object = castResult.hitObject
+    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()    
+    local castResult = nearby.castRenderingRay(position, position + direction * dist)
+    return castResult.hitObject
+end
+module.GetLookAtObject = GetLookAtObject
+
+local function DupeObject()
+    local object = GetLookAtObject(grabDistance)
  
     if not object then return end
  
@@ -132,45 +181,15 @@ local function DupeObject()
     core.sendGlobalEvent("SpawnObject", {
         recordId = object.recordId,
         position = object.position + randomPosDelta,
-        cell = object.cell.name
+        cell = object.cell.name,
+        onGround = true
     })
 end
 module.DupeObject = DupeObject
 
-local function HoldGrabbedObject(dt)
-    if not activeObject then return end
 
-    local position = camera.getPosition()
-    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
-    local objectHoldPos = position + direction*holdDistance;
 
-    
-    local currentVelocity = activeObject.velocity;
-    local pushVector = objectHoldPos - activeObject.position - currentVelocity/4;
-    
-    if pushVector:length() > maxDragImpulse then
-        pushVector = pushVector:normalize() * maxDragImpulse
-    end
-    
-    -- Note: offset will not work with this setup, we need to calculate push vector as a difference between current hold offset position (transformed) and screen center
-    -- Also: impulse offset uses local object space! But its not rotated? Just based on center of mass. So i need to save that offset together with initial rotation and then
-    -- each frame unrotate the offset and rotate it to the new rotation?
-    -- No i believe its applied to a non-rotated version, so it is on object local space. So i need to save it and to apply it properly also transform it by the object transform? Need to test this
-    -- No i thinks its actually NOT rotated, seems like all apply things are happening in a world space.
-    activeObject:applyImpulse(pushVector)
 
-    if input.isMouseButtonPressed(1) then
-        -- Calculating throw strength
-        local strength = types.Actor.stats.attributes.strength(omwself);
-        throwImpulse = util.clamp(util.remap(strength.modified, 40, 100, 500, 1500),750,1500);
-        print("Calculated throwImpulse " .. throwImpulse);
-
-        -- Launching!
-        activeObject:applyImpulse(direction*throwImpulse)
-        DropObject()
-    end
-end
-module.HoldGrabbedObject = HoldGrabbedObject
 
 return module
 

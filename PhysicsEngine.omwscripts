@@ -1,2 +1,3 @@
 GLOBAL: scripts\MaxYari\experiments\PhysicsEngineGlobal.lua
 PLAYER: scripts\MaxYari\experiments\PhysicsEnginePlayer.lua
+CUSTOM: scripts\MaxYari\experiments\PhysicsObjectLocal.lua

@@ -168,6 +168,14 @@ local function shallowTableCopy(orig)
 end
 module.shallowTableCopy = shallowTableCopy
 
+local function shallowMergeTables(table1, table2)
+    for key, value in pairs(table2) do
+        table1[key] = value
+    end
+    return table1
+end
+module.shallowMergeTables = shallowMergeTables
+
 local PosToVelSampler = {
     new = function(self, time_window)
         self.positionSampler = MeanSampler:new(time_window)
@@ -595,15 +603,22 @@ end
 module.readYamlFile = readYamlFile
 
 local function spawnObject(recordId, position, cell, onGround)
-    if onGround == nil then onGround = true end
+    if onGround == nil then onGround = false end
     print("Spawning object:", recordId, position, cell, onGround)
     local object = world.createObject(recordId, 1)
     if object then
-        object:teleport(cell, position, { onGround = onGround})
+        object:teleport(cell or "", position, { onGround = onGround})
     end
     return object
 end
 
 module.spawnObject = spawnObject
+
+local id = 0
+local function genSequentialId()
+    id = id + 1
+    return id
+end
+module.genSequentialId = genSequentialId
 
 return module

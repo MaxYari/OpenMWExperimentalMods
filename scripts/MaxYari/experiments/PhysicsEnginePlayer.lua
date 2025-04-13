@@ -105,7 +105,7 @@ interface.getPhysicsObject = getPhysicsObject ]]
 
 local lastNearbyItemsAmount = 0
 local function autoPhisicifyNearby()
-    if lastNearbyItemsAmount == #nearby.items then return end
+    --[[ if lastNearbyItemsAmount == #nearby.items then return end
     for _, obj in ipairs(nearby.items) do
         if gutils.foundInList(physicsTypes, obj.type) and obj:isValid() then
             core.sendGlobalEvent("Physicify", {
@@ -115,7 +115,7 @@ local function autoPhisicifyNearby()
             --Physicify(obj, { mass = 1, drag = 0.1, bounce = 0.5, realignWhenRested = true })
         end
     end
-    lastNearbyItemsAmount = #nearby.items
+    lastNearbyItemsAmount = #nearby.items ]]
 end
 
 
@@ -166,6 +166,7 @@ return {
             end
             if key.symbol == 'x' then
                 PhysicsUtils.GrabObject()
+                types.Actor.setStance(omwself, types.Actor.STANCE.Nothing)
             end
             if key.symbol == 'c' then
                 PhysicsUtils.PushObjects()

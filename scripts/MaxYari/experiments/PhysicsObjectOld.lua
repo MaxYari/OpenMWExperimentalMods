@@ -6,6 +6,8 @@ local core = require('openmw.core')
 local util = require('openmw.util')
 local types = require('openmw.types')
 local nearby = require('openmw.nearby')
+local ui = require('openmw.ui')
+local camera = require('openmw.camera')
 local omwself = require('openmw.self')
 local gutils = require(mp..'scripts/gutils')
 local EventsManager = require(mp..'scripts/events_manager')
@@ -17,8 +19,7 @@ local RotationalDamping = 0.5 -- Damping factor for angular velocity
 local ImpactTorqueMult = 0.5 -- Multiplier for angular velocity impact
 local MaxAngularVelocity = 5000 -- Optional: Maximum angular velocity limit
 
-if omwself.recordId ~= "p_restore_health_s" then return end
-
+-- TO DO figure issue with objects being simulated in unloaded cells
 
 -- Utilities ------------------------------------------------------
 -------------------------------------------------------------------
@@ -92,7 +93,8 @@ function PhysicsObject:new(object, properties)
 
     print("Creating a physics object for: ", object)
 
-    local box = object:getBoundingBox()
+    local box
+    if object then box = object:getBoundingBox() end
     
     local radius = 10
     if properties.radius then
@@ -124,9 +126,10 @@ function PhysicsObject:new(object, properties)
         rotation = properties.rotation
     elseif object then
         rotation = object.rotation
-    end   
+    end
     
     
+    inst.id = properties.id or object.id
     inst.object = object
     inst.position = position
     inst.rotation = rotation
@@ -142,17 +145,12 @@ function PhysicsObject:new(object, properties)
     inst.drag = properties.drag or 0.33
     inst.angularDrag = properties.angularDrag or 0.1 
     inst.bounce = properties.bounce or 0.5    
-    inst.isSleeping = properties.isSleeping or false
-    inst.sleepTimer = 0
+    inst.isSleeping = true
     inst.onCollision = EventsManager:new()
     inst.onIntersection = EventsManager:new()
-    
+    inst.awaitingSpawn = properties.awaitingSpawn
 
     return inst
-end
-
-function PhysicsObject:setPositionUnadjusted(position)
-    self.position = position + self.rotation:apply(self.origin)
 end
 
 function PhysicsObject:wakeUp()
@@ -301,7 +299,10 @@ function PhysicsObject:trySleep(dt)
     if self.isSleeping or not self.actualVelocity then return end
 
     local speed = self.actualVelocity:length()
-    if speed < SleepSpeed then        
+    if speed < SleepSpeed then
+        if not self.sleepTimer then
+            self.sleepTimer = 0
+        end
         self.sleepTimer = self.sleepTimer + dt
         if self.sleepTimer >= SleepTime then
             self.isSleeping = true
@@ -313,60 +314,7 @@ function PhysicsObject:trySleep(dt)
     self.lastPosition = self.position
 end
 
-print("Script global scope")
-local frame = 0
-local physicsObject = nil
-local interface = {version=1.0}
-
-local function onInit(props)
-    print("Received on init props",props,props.mass)
-    physicsObject = PhysicsObject:new(omwself, props) 
-    interface.physicsObject = physicsObject
-end
-
-local function onUpdate(dt)
-    if not physicsObject then
-        print("No physics object for ",omwself.recordId,"WTH")
-        return 
-    end
-    --print("Physics Object Update frame: ", frame)
-    physicsObject:update(dt)
-    physicsObject:trySleep(dt)
-
-    frame = frame + 1
-end
-
-return {
-    engineHandlers = {
-        onInit = onInit,
-        onUpdate = onUpdate        
-    },
-    eventHandlers = {
-        MoveTo = function(e)
-            local currentVelocity = physicsObject.velocity;
-            local pushVector = e.position - physicsObject.position - currentVelocity/4;
-    
-            if pushVector:length() > e.maxImpulse then
-                pushVector = pushVector:normalize() * e.maxImpulse
-            end
-
-            physicsObject:applyImpulse(pushVector)
-        end,
-        ApplyImpulse = function(e)
-            physicsObject:applyImpulse(e.impulse)
-        end,
-        SetPhysicsProperties = function(props)
-            gutils.shallowMergeTables(physicsObject, props)
-        end,
-        SetPositionUnadjusted = function(e)
-            physicsObject:setPositionUnadjusted(e.position)
-        end,
-    },
-    interfaceName = "LuaPhysics",
-    interface = interface,
-    
-}
-
+return PhysicsObject
 
 
 

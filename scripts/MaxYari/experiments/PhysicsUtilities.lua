@@ -3,11 +3,11 @@ local mp = 'scripts/MaxYari/experiments/'
 local core = require('openmw.core')
 local util = require('openmw.util')
 local types = require('openmw.types')
-local nearby = require('openmw.nearby')
-local ui = require('openmw.ui')
-local camera = require('openmw.camera')
-local omwself = require('openmw.self')
-local input = require('openmw.input')
+local nstatus, nearby = pcall(require, "openmw.nearby")
+local ustatus, ui = pcall(require, 'openmw.ui')
+local cstatus, camera = pcall(require, 'openmw.camera')
+local sstatus, omwself = pcall(require, 'openmw.self')
+local itatus, input = pcall(require, 'openmw.input')
 local gutils = require(mp..'scripts/gutils')
 local PhysicsObject = require(mp..'PhysicsObject')
 local it = require('openmw.interfaces')
@@ -93,6 +93,15 @@ local function HoldGrabbedObject(dt, ignoreCollisions)
 end
 module.HoldGrabbedObject = HoldGrabbedObject
 
+local function randomizeImpulse(impulse, randomisationAmount)
+    local unrandWeight = 1 - randomisationAmount
+    local direction = impulse:normalize()
+    local strength = impulse:length()
+    local randomDirection = gutils.randomDirection()
+    return impulse * unrandWeight + randomDirection * strength * randomisationAmount
+end
+module.randomizeImpulse = randomizeImpulse
+
 local function PushObjects()
     local position = camera.getPosition()
     local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
@@ -114,8 +123,7 @@ local function PushObjects()
                 local perpendicularDistance = (toObject - direction * projectionLength):length()
                 if perpendicularDistance <= cylinderRadius then
                     -- Apply impulse to the object
-                    local randomDirection = gutils.randomDirection()
-                    local impulse = direction * impulseStrength + randomDirection * impulseStrength * 0.25
+                    local impulse = randomizeImpulse(direction * impulseStrength,0.25)
                     object:sendEvent("ApplyImpulse",{impulse=impulse})
                 end
             end

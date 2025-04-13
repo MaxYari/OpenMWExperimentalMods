@@ -4,11 +4,9 @@ local mp = 'scripts/MaxYari/experiments/'
 
 local core = require('openmw.core')
 local util = require('openmw.util')
-local types = require('openmw.types')
-local nearby = require('openmw.nearby')
-local ui = require('openmw.ui')
-local camera = require('openmw.camera')
-local omwself = require('openmw.self')
+
+local nstatus, nearby = pcall(require, "openmw.nearby")
+local sstatus, omwself = pcall(require, "openmw.self")
 local gutils = require(mp..'scripts/gutils')
 local EventsManager = require(mp..'scripts/events_manager')
 
@@ -19,7 +17,8 @@ local RotationalDamping = 0.5 -- Damping factor for angular velocity
 local ImpactTorqueMult = 0.5 -- Multiplier for angular velocity impact
 local MaxAngularVelocity = 5000 -- Optional: Maximum angular velocity limit
 
--- TO DO figure issue with objects being simulated in unloaded cells
+-- if omwself.recordId ~= "p_restore_health_s" then return end
+
 
 -- Utilities ------------------------------------------------------
 -------------------------------------------------------------------
@@ -93,8 +92,7 @@ function PhysicsObject:new(object, properties)
 
     print("Creating a physics object for: ", object)
 
-    local box
-    if object then box = object:getBoundingBox() end
+    local box = object:getBoundingBox()
     
     local radius = 10
     if properties.radius then
@@ -126,10 +124,9 @@ function PhysicsObject:new(object, properties)
         rotation = properties.rotation
     elseif object then
         rotation = object.rotation
-    end
+    end   
     
     
-    inst.id = properties.id or object.id
     inst.object = object
     inst.position = position
     inst.rotation = rotation
@@ -145,12 +142,32 @@ function PhysicsObject:new(object, properties)
     inst.drag = properties.drag or 0.33
     inst.angularDrag = properties.angularDrag or 0.1 
     inst.bounce = properties.bounce or 0.5    
-    inst.isSleeping = true
+    inst.isSleeping = properties.isSleeping or false
+    inst.sleepTimer = 0
     inst.onCollision = EventsManager:new()
     inst.onIntersection = EventsManager:new()
-    inst.awaitingSpawn = properties.awaitingSpawn
+    
 
     return inst
+end
+
+function PhysicsObject:serialize()
+    return {
+        object = self.object,
+        position = self.position,
+        velocity = self.velocity,
+        radius = self.radius,
+        origin = self.origin,
+        rotation = self.rotation,
+        isSleeping = self.isSleeping,
+        bounce = self.bounce,
+        mass = self.mass,
+        ignorePhysObjectCollisions = self.ignorePhysObjectCollisions
+    }
+end
+
+function PhysicsObject:setPositionUnadjusted(position)
+    self.position = position + self.rotation:apply(self.origin)
 end
 
 function PhysicsObject:wakeUp()
@@ -172,9 +189,18 @@ function PhysicsObject:handleCollision(hitResult)
     local normal = hitResult.hitNormal
     local velocity = self.velocity
     local dot = velocity:dot(normal)    
+    
+    local newInContact = true
+    local newInContactWith = hitResult.hitObject
+    local isNewContact = newInContact ~= self.inContact or newInContactWith ~= self.inContactWith
+    
+    self.inContact = newInContact
+    self.inContactWith = newInContactWith
+
     if dot < 0 then
         -- Run collision callback
-        if self.onCollision then self.onCollision:emit(hitResult) end        
+        
+        if isNewContact then self.onCollision:emit(hitResult) end    
 
         -- Reflect velocity and apply bounce factor
         self.velocity = -(normal * normal:dot(velocity) * 2 - velocity)
@@ -196,7 +222,7 @@ function PhysicsObject:handleCollision(hitResult)
         end
     else
         -- Run intersection callback
-        if self.onIntersection then self.onIntersection:emit(hitResult) end
+        if isNewContact then self.onIntersection:emit(hitResult) end
     end
 end
 
@@ -219,90 +245,83 @@ function PhysicsObject:handlePhysObjectCollision(physObject)
         data2.velocity = data2.velocity - impulse / data2.mass
 
         data1:wakeUp()
-        data2:wakeUp()
+        --data2:wakeUp()
     end
 end
 
+local frameDt = 0
 function PhysicsObject:update(dt)
-    
-    if self.isSleeping then
-        return
-    end
+    frameDt = dt
 
-    --print("Internal Updating physics object: ", self.object)
+    if not self.isSleeping then
+        --print("Internal Updating physics object: ", self.object)
 
-    -- Apply Gravity
-    self.velocity = self.velocity + Gravity * dt
+        -- Apply Gravity
+        self.velocity = self.velocity + Gravity * dt
 
-    -- Apply drag
-    self.velocity = self.velocity * (1 - self.drag * dt)
+        -- Apply drag
+        self.velocity = self.velocity * (1 - self.drag * dt)
 
-    -- Calculate displacement
-    local displacement = self.velocity * dt
-    
-    -- Perform sphere raycast for collision detection with environment
-    local rayStart = self.position
-    local rayEnd = rayStart + displacement
-    
-    -- Check for collisions with the environment (sphere)
-    
-    if not self.ignoreWorldCollisions then
-        local sphereHitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
-        if sphereHitResult.hit then
-            self:handleCollision(sphereHitResult)
-            self.position = calcSpherePosAtHit(rayStart, rayEnd, sphereHitResult.hitPos, self.radius)
+        -- Calculate displacement
+        local displacement = self.velocity * dt
+        
+        -- Perform sphere raycast for collision detection with environment
+        local rayStart = self.position
+        local rayEnd = rayStart + displacement
+        
+        -- Check for collisions with the environment (sphere)
+        
+        if not self.ignoreWorldCollisions then
+            local sphereHitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
+            if sphereHitResult.hit then
+                self:handleCollision(sphereHitResult)
+                self.position = calcSpherePosAtHit(rayStart, rayEnd, sphereHitResult.hitPos, self.radius)
+            else
+                self.position = rayEnd
+            end   
         else
+            self.inContact = false
+            self.inContactWith = nil
             self.position = rayEnd
-        end   
-    else
-        self.position = rayEnd
-    end
+        end
 
-    if not self.lastPosition then self.lastPosition = self.position end
-    self.actualVelocity = (self.position - self.lastPosition) / dt
+        if not self.lastPosition then self.lastPosition = self.position end
+        self.actualVelocity = (self.position - self.lastPosition) / dt
 
-    -- Apply angular drag to angular velocity
-    self.angularVelocity = self.angularVelocity * (1 - self.angularDrag * dt)
-    if self.lockRotation then self.angularVelocity = self.angularVelocity * 0 end -- Lock rotation if specified
-    
-    -- Update rotation based on angular velocity
-    local angularDisplacement = self.angularVelocity * dt * 0.01
-    local rotationDelta = util.transform.rotate(angularDisplacement:length(), angularDisplacement:normalize())
-    self.rotation = rotationDelta * self.rotation
+        -- Apply angular drag to angular velocity
+        self.angularVelocity = self.angularVelocity * (1 - self.angularDrag * dt)
+        if self.lockRotation then self.angularVelocity = self.angularVelocity * 0 end -- Lock rotation if specified
+        
+        -- Update rotation based on angular velocity
+        local angularDisplacement = self.angularVelocity * dt * 0.01
+        local rotationDelta = util.transform.rotate(angularDisplacement:length(), angularDisplacement:normalize())
+        self.rotation = rotationDelta * self.rotation
 
-    -- Realign when close to rest state
-    if self.realignWhenRested then
-        -- FIX ME; rest is now based on speed, not anglar speed, so realignment will probably not work as intended
-        if not self.rotationInfluence then self.rotationInfluence = 0 end
-        local speed = self.actualVelocity:length()
-        if speed < SleepSpeed then
-            --self.rotationInfluence = 1 - speed / SleepSpeed
-            self.rotationInfluence = self.sleepTimer / SleepTime
-            if self.rotationInfluence > 0 then
-                self.rotation = slerpRotation(self.rotation, util.transform.identity, self.rotationInfluence)
+        -- Realign when close to rest state
+        if self.realignWhenRested then
+            -- FIX ME; rest is now based on speed, not anglar speed, so realignment will probably not work as intended
+            if not self.rotationInfluence then self.rotationInfluence = 0 end
+            local speed = self.actualVelocity:length()
+            if speed < SleepSpeed then
+                --self.rotationInfluence = 1 - speed / SleepSpeed
+                self.rotationInfluence = self.sleepTimer / SleepTime
+                if self.rotationInfluence > 0 then
+                    self.rotation = slerpRotation(self.rotation, util.transform.identity, self.rotationInfluence)
+                end
+            else
+                self.rotationInfluence = 0
             end
-        else
-            self.rotationInfluence = 0
         end
     end
 
-    core.sendGlobalEvent("TeleportRequest", {
-        object = self.object,
-        id = self.id,
-        position = self.position,
-        origin = self.origin,
-        rotation = self.rotation
-    })
+    core.sendGlobalEvent("LuaPhysics_UpdateVisPos", self:serialize())
 end
 
 function PhysicsObject:trySleep(dt)
     if self.isSleeping or not self.actualVelocity then return end
 
     local speed = self.actualVelocity:length()
-    if speed < SleepSpeed then
-        if not self.sleepTimer then
-            self.sleepTimer = 0
-        end
+    if speed < SleepSpeed then        
         self.sleepTimer = self.sleepTimer + dt
         if self.sleepTimer >= SleepTime then
             self.isSleeping = true
@@ -315,6 +334,7 @@ function PhysicsObject:trySleep(dt)
 end
 
 return PhysicsObject
+
 
 
 

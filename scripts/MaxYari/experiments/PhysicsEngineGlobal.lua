@@ -73,7 +73,7 @@ return {
         TeleportRequest = handleTeleportRequest,
         Physicify = function(e)
             print("Global received phisicify request for object",e.object," at frame",frame)
-            if e.object:hasScript(physicsObjectScript) then e.object:removeScript(physicsObjectScript) end
+            if e.object:hasScript(physicsObjectScript) then return end
             e.object:addScript(physicsObjectScript, e.properties)
         end,
         --[[ SpawnObject = function(e)

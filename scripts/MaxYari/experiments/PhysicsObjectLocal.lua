@@ -7,8 +7,6 @@ local util = require('openmw.util')
 local types = require('openmw.types')
 local nearby = require('openmw.nearby')
 local omwself = require('openmw.self')
-local i = require('openmw.interfaces')
-
 local gutils = require(mp..'scripts/gutils')
 local EventsManager = require(mp..'scripts/events_manager')
 
@@ -317,21 +315,17 @@ end
 
 print("Script global scope")
 local frame = 0
-
-if i.LuaPhysics then
-    print("LuaPhysics interface aexists!")
-    
-end
-local interface = i.LuaPhysics or {version=1.0}
+local physicsObject = nil
+local interface = {version=1.0}
 
 local function onInit(props)
     print("Received on init props",props,props.mass)
-    interface.physicsObject = PhysicsObject:new(omwself, props)
+    physicsObject = PhysicsObject:new(omwself, props) 
+    interface.physicsObject = physicsObject
 end
 
 local function onUpdate(dt)
-    local physicsObject = interface.physicsObject
-    if not interface.physicsObject then
+    if not physicsObject then
         print("No physics object for ",omwself.recordId,"WTH")
         return 
     end
@@ -349,7 +343,6 @@ return {
     },
     eventHandlers = {
         MoveTo = function(e)
-            local physicsObject = interface.physicsObject
             local currentVelocity = physicsObject.velocity;
             local pushVector = e.position - physicsObject.position - currentVelocity/4;
     
@@ -360,15 +353,12 @@ return {
             physicsObject:applyImpulse(pushVector)
         end,
         ApplyImpulse = function(e)
-            local physicsObject = interface.physicsObject
             physicsObject:applyImpulse(e.impulse)
         end,
         SetPhysicsProperties = function(props)
-            local physicsObject = interface.physicsObject
             gutils.shallowMergeTables(physicsObject, props)
         end,
         SetPositionUnadjusted = function(e)
-            local physicsObject = interface.physicsObject
             physicsObject:setPositionUnadjusted(e.position)
         end,
     },

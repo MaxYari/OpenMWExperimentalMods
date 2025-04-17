@@ -15,6 +15,8 @@ local windPowerMax = 2
 local windBurstProbability = 0.5
 local windPowerChangeInterval = 1
 
+--if true then return end
+
 local function initializeLanternWindData(lantern)
     local positionLength = lantern.position:length()
     local initialTimer = math.abs(math.sin(positionLength / 1000))
@@ -44,6 +46,7 @@ end
 local lanternConfigs = {
     { name = "light_de_paper_lantern", offset = util.vector3(0, 0, 35) },
     { name = "light_de_lantern", offset = util.vector3(0, 0, 0) },
+    { name = "light_com_lantern", offset = util.vector3(0, 0, 0) },
     { name = "active_sign_c_guild", offset = util.vector3(0, 0, 0), localSwingDirection = util.vector3(1, 0, 0), avoidYawRotation = true, weight = 1.5 },
     { name = "light_de_streetlight", offset = util.vector3(0, 0, 0) }
 }

@@ -8,6 +8,7 @@ local PhysicsObject = require(mp..'PhysicsObject')
 local vfs = require('openmw.vfs')
 
 -- local physicsObjectScript = mp.."PhysicsEngineLocal.lua"
+-- if true then return end
 
 local physicsSfxMasterVolume = 2
 

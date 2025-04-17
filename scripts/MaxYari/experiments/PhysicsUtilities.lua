@@ -9,8 +9,7 @@ local cstatus, camera = pcall(require, 'openmw.camera')
 local sstatus, omwself = pcall(require, 'openmw.self')
 local itatus, input = pcall(require, 'openmw.input')
 local gutils = require(mp..'scripts/gutils')
-local PhysicsObject = require(mp..'PhysicsObject')
-local it = require('openmw.interfaces')
+local async = require('openmw.async')
 
 local module = {}
 
@@ -168,11 +167,17 @@ local function ExplodeObjects()
 end
 module.ExplodeObjects = ExplodeObjects
 
-local function GetLookAtObject(dist)
+local function GetLookAtObject(dist, cb)
     local position = camera.getPosition()
-    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()    
-    local castResult = nearby.castRenderingRay(position, position + direction * dist)
-    return castResult.hitObject
+    local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()   
+    if cb then
+        nearby.asyncCastRenderingRay(async:callback(function(castResult)
+            cb(castResult.hitObject)
+        end), position, position + direction * dist)
+    else
+        local castResult = nearby.castRenderingRay(position, position + direction * dist)
+        return castResult.hitObject
+    end
 end
 module.GetLookAtObject = GetLookAtObject
 

@@ -10,14 +10,14 @@ local sstatus, omwself = pcall(require, "openmw.self")
 local gutils = require(mp..'scripts/gutils')
 local EventsManager = require(mp..'scripts/events_manager')
 
+
 local Gravity = util.vector3(0, 0, -9.8*72)
-local SleepSpeed = 5
+local SleepSpeed = 7
 local SleepTime = 1
-local RotationalDamping = 0.5 -- Damping factor for angular velocity
 local ImpactTorqueMult = 0.5 -- Multiplier for angular velocity impact
 local MaxAngularVelocity = 5000 -- Optional: Maximum angular velocity limit
 
--- if omwself.recordId ~= "p_restore_health_s" then return end
+--if omwself.recordId ~= "food_kwama_egg_02" then return end
 
 
 -- Utilities ------------------------------------------------------
@@ -92,15 +92,33 @@ function PhysicsObject:new(object, properties)
 
     print("Creating a physics object for: ", object)
 
+    inst:init(object, properties)
+
+    return inst
+end
+
+function PhysicsObject:init(object, properties)
     local box = object:getBoundingBox()
     
     local radius = 10
+    local largestDimension = radius
+    if properties.largestDimension then
+        largestDimension = properties.largestDimension
+    end
     if properties.radius then
-        radius = properties.radius
+        radius = properties.radius        
     elseif object then
         radius = math.min(box.halfSize.x, box.halfSize.y, box.halfSize.z)
+        largestDimension = math.max(box.halfSize.x, box.halfSize.y, box.halfSize.z)
         if radius < 2 then radius = 2 end
+        if largestDimension < 2 then largestDimension = 2 end
     end
+
+    local volume = 4/3*math.pi*(radius/72)^3 --In meters^3
+    local density = 250 -- In kg/m^3
+    local mass = volume * density -- In kg
+    print(object.recordId,"Volume: ", volume,"Mass:",mass)
+    
     
     
     local origin = util.vector3(0, 0, 0)
@@ -127,29 +145,37 @@ function PhysicsObject:new(object, properties)
     end   
     
     
-    inst.object = object
-    inst.position = position
-    inst.rotation = rotation
-    inst.origin = origin
-    inst.velocity = util.vector3(0, 0, 0)
-    inst.angularVelocity = util.vector3(0, 0, 0) -- Add angular velocity
-    inst.lockRotation = properties.lockRotation or false
-    inst.realignWhenRested = properties.realignWhenRested or false
-    inst.ignoreWorldCollisions = false
-    inst.ignorePhysObjectCollisions = false
-    inst.radius = radius
-    inst.mass = properties.mass or 1
-    inst.drag = properties.drag or 0.33
-    inst.angularDrag = properties.angularDrag or 0.1 
-    inst.bounce = properties.bounce or 0.5    
-    inst.isSleeping = properties.isSleeping or false
-    inst.sleepTimer = 0
-    inst.onCollision = EventsManager:new()
-    inst.onIntersection = EventsManager:new()
-    
-
-    return inst
+    self.object = object
+    self.position = position
+    self.rotation = rotation
+    self.origin = origin
+    self.velocity = util.vector3(0, 0, 0)
+    self.angularVelocity = util.vector3(0, 0, 0) -- Add angular velocity
+    self.lockRotation = properties.lockRotation or false
+    self.realignWhenRested = properties.realignWhenRested or false
+    self.ignoreWorldCollisions = false
+    self.ignorePhysObjectCollisions = false
+    self.radius = radius
+    self.largestDimension = largestDimension
+    self.mass = properties.mass or 1
+    self.drag = properties.drag or 0.33
+    self.angularDrag = properties.angularDrag or 0.1 
+    self.bounce = properties.bounce or 0.5    
+    self.isSleeping = properties.isSleeping or false
+    self.sleepTimer = 0
+    self.onCollision = properties.onCollision or EventsManager:new()
+    self.onIntersection = properties.onIntersection or EventsManager:new()
 end
+
+function PhysicsObject:reInit()
+    print("Reinitialising a physics object for: ", self.object)
+    self.position = nil
+    self.rotation = nil
+    self.origin = nil
+    self.radius = nil
+    self:init(self.object, self)
+end
+
 
 function PhysicsObject:serialize()
     return {
@@ -207,19 +233,22 @@ function PhysicsObject:handleCollision(hitResult)
         self.velocity = self.velocity * self.bounce
 
         -- Apply rotational damping
-        self.angularVelocity = self.angularVelocity * RotationalDamping
+        self.angularVelocity = self.angularVelocity * ImpactTorqueMult
 
         -- Calculate torque from collision impact
         local impactPoint = hitResult.hitPos
         local collisionNormal = hitResult.hitNormal
         local relativePosition = impactPoint - self.position
         local torque = relativePosition:cross(-self.velocity)
-        self.angularVelocity = self.angularVelocity + torque / self.mass * ImpactTorqueMult
+        local tangVelocity = torque/self.mass
+        local angularVeloctiy = tangVelocity/self.largestDimension
+        -- 6 is a magic number that makes collistion look fun, essentially its (probably) related to moment of inertia which is not accounted for at all
+        self.angularVelocity = self.angularVelocity + angularVeloctiy * 6
 
         -- Clamp angular velocity to prevent it from growing uncontrollably
-        if self.angularVelocity:length() > MaxAngularVelocity then
+        --[[ if self.angularVelocity:length() > MaxAngularVelocity then
             self.angularVelocity = self.angularVelocity:normalize() * MaxAngularVelocity
-        end
+        end ]]
     else
         -- Run intersection callback
         if isNewContact then self.onIntersection:emit(hitResult) end
@@ -270,16 +299,18 @@ function PhysicsObject:update(dt)
         local rayEnd = rayStart + displacement
         
         -- Check for collisions with the environment (sphere)
-        
+        local collided = false
+
         if not self.ignoreWorldCollisions then
             local sphereHitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
             if sphereHitResult.hit then
                 self:handleCollision(sphereHitResult)
                 self.position = calcSpherePosAtHit(rayStart, rayEnd, sphereHitResult.hitPos, self.radius)
-            else
-                self.position = rayEnd
-            end   
-        else
+                collided = true
+            end
+        end
+
+        if not collided then
             self.inContact = false
             self.inContactWith = nil
             self.position = rayEnd

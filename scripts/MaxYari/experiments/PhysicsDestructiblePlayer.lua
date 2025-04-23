@@ -13,38 +13,45 @@ local I = require('openmw.interfaces')
 
 local gutils = require(mp..'scripts/gutils')
 local animManager = require(mp..'scripts/anim_manager')
-local PhysicsUtilities = require(mp..'PhysicsUtilities')
-local HitImpulse = 600
+local PhysicsUtils = require(mp..'scripts/physics_utils')
+local D = require(mp..'scripts/physics_defs')
 
-animManager.addOnKeyHandler(function(groupname, key)
+local selfActor = gutils.Actor:new(omwself)
+
+local MaxHitImpulse = 600
+local frame = 0
+local hitProcessedFrame = -1
+
+animManager.onHitKey:addEventHandler(function(groupname, key, isMax)
     --print("Animation event", groupname,"Key",key)
-    
-    if key:match(" hit$") then
-        PhysicsUtilities.GetLookAtObject(200, function(obj)
-            print(obj)
-            if obj then
-                local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
-                core.sendGlobalEvent("FractureMe", {
-                    object = obj,
-                    baseImpulse = direction * HitImpulse + util.vector3(0, 0, 1) * HitImpulse,
-                })
-            end
-        end)
-    end
+    if frame == hitProcessedFrame then return end
 
-    --[[ if groupname == "spellcast" and key:match(" start$") then
-        print("Canceling spellcast")
-        -- Testing spellcast cancel (largely irrelevant to the mod)
-        animation.cancel(omwself, groupname)
-    end ]]
+    local damage = 5
+    local hitImpulse = MaxHitImpulse
+    if isMax then damage = 10 end
+    if not isMax then hitImpulse = MaxHitImpulse/2 end
+
+    PhysicsUtils.GetLookAtObject(selfActor:getAttackRange(), function(obj)            
+        if obj then
+            local direction = camera.viewportToWorldVector(util.vector2(0.5, 0.5)):normalize()
+            local finalImpulse = direction * hitImpulse + util.vector3(0, 0, 1) * hitImpulse
+            obj:sendEvent(D.e.ApplyImpulse, {
+                impulse = finalImpulse,
+            })
+            obj:sendEvent(D.e.DestructibleHit, {
+                damage = damage,
+                source = omwself,
+                baseImpulse = finalImpulse,
+            })
+        end
+    end)
+
+    hitProcessedFrame = frame
 end)
 
---[[ I.AnimationController.addPlayBlendedAnimationHandler(function(groupname, options) 
-    print("Animation start event", groupname,"Key",options.startkey)
-end) ]]
 
 local function onUpdate(dt)
-    
+    frame = frame + 1
 end
 
 return {

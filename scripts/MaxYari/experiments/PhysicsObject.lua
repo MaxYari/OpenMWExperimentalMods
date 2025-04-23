@@ -7,78 +7,35 @@ local util = require('openmw.util')
 
 local nstatus, nearby = pcall(require, "openmw.nearby")
 local sstatus, omwself = pcall(require, "openmw.self")
+
+local phUtils = require(mp..'scripts/physics_utils')
 local gutils = require(mp..'scripts/gutils')
 local EventsManager = require(mp..'scripts/events_manager')
+local D = require(mp..'scripts/physics_defs')
 
 
-local Gravity = util.vector3(0, 0, -9.8*72)
+local Gravity = util.vector3(0, 0, -9.8*D.GUtoM)
 local SleepSpeed = 7
 local SleepTime = 1
-local ImpactTorqueMult = 0.5 -- Multiplier for angular velocity impact
+local ImpactAngVelDamping = 0.5 -- Multiplier for angular velocity impact
+local ImpactAngVelMult = 6
 local MaxAngularVelocity = 5000 -- Optional: Maximum angular velocity limit
+local WaterHitVelDamping = 0.5
 
 --if omwself.recordId ~= "food_kwama_egg_02" then return end
 
 
--- Utilities ------------------------------------------------------
--------------------------------------------------------------------
--- Calculate sphere position along the ray based on sphere cast hit position
-local function calcSpherePosAtHit(from, to, hitPos, radius) 
-    local c = hitPos
-    local r = radius
-    local o = from
-    local u = (to - from):normalize()
-    local v1 = util.vector3(1, 1, 1)
-    local dist = 0
+-- TO FINALISE: Base physics should NOT have any destructible containers at all, nor potions. Maybe bottles?
+-- TO FINALISE: Remove throwing - make it a separate mod, and add throw charge-up
 
-    local Det = 0
-    local dist1 = 0
-    local dist2 = 0
+-- TO DO: Amount of debris per cell should be limited, debris beyound that should be nuked when player is not looking
+-- TO DO: Introduce a setting menu that will have settings for per cell debris limit and self-collision, and an input binding for dragging items around
 
-    if (from - hitPos):length() < radius then        
-        dist = 0
-        goto out
-    end
-    
-    Det = u:dot(o - c)^2 - (o - c):length()^2 + r * r
-    
-    if Det < 0 and Det > -0.1 then Det = 0
-    elseif Det <= -0.1 then 
-        dist = 0 
-        goto out
-    end
 
-    dist1 = - u:dot(o - c) + math.sqrt(Det)
-    dist2 = - u:dot(o - c) - math.sqrt(Det)
-    
-    if dist1 < 0 and dist2 < 0 then        
-        dist = 0
-        goto out
-    end
+-- TO DO: On each destruction, in local of object, check if there are guards within 20 meters and supply this info to global, if 3 detected breaks are accumulated within 3 minutes - crime.
 
-    if dist1 < 0 then dist = dist2
-    elseif dist2 < 0 then dist = dist1
-    else dist = math.min(dist1, dist2) end
 
-    ::out::
 
-    local pos = o + u * dist
-    
-    return pos
-end
-
--- Custom implementation of slerp for rotations (interpolates all axes)
-local function slerpRotation(from, to, t)
-    local fZ, fY, fX = from:getAnglesZYX()
-    local tZ, tY, tX = to:getAnglesZYX()
-
-    --local lpZ = util.remap(t, 0, 1, fZ, tZ)
-    local lpY = util.remap(t, 0, 1, fY, tY)
-    local lpX = util.remap(t, 0, 1, fX, tX)
-    return util.transform.rotateX(lpX) * util.transform.rotateY(lpY) * util.transform.rotateZ(fZ)
-end
-----------------------------------------------------------------------------
-----------------------------------------------------------------------------
 
 
 -- PhysicsObject class -----------------------------------------------------
@@ -90,7 +47,7 @@ function PhysicsObject:new(object, properties)
     setmetatable(inst, self)
     self.__index = self
 
-    print("Creating a physics object for: ", object)
+    --print("Creating a physics object for: ", object)
 
     inst:init(object, properties)
 
@@ -101,52 +58,45 @@ function PhysicsObject:init(object, properties)
     local box = object:getBoundingBox()
     
     local radius = 10
-    local largestDimension = radius
-    if properties.largestDimension then
-        largestDimension = properties.largestDimension
-    end
+    local largestHalfExtent = radius    
     if properties.radius then
         radius = properties.radius        
     elseif object then
         radius = math.min(box.halfSize.x, box.halfSize.y, box.halfSize.z)
-        largestDimension = math.max(box.halfSize.x, box.halfSize.y, box.halfSize.z)
+        largestHalfExtent = math.max(box.halfSize.x, box.halfSize.y, box.halfSize.z)
         if radius < 2 then radius = 2 end
-        if largestDimension < 2 then largestDimension = 2 end
+        if largestHalfExtent < 2 then largestHalfExtent = 2 end
     end
-
-    local volume = 4/3*math.pi*(radius/72)^3 --In meters^3
-    local density = 250 -- In kg/m^3
-    local mass = volume * density -- In kg
-    print(object.recordId,"Volume: ", volume,"Mass:",mass)
-    
-    
     
     local origin = util.vector3(0, 0, 0)
     if properties.origin then
         origin = properties.origin
     elseif object then
         origin = object.rotation:inverse():apply(box.center-object.position)
-    end
-    
+    end    
 
     local position = nil
+    local initialPosition = nil
     if properties.position then
         position = properties.position
     elseif object then
         position = object.position + object.rotation:apply(origin)
-    end
-    
+        initialPosition = position
+    end    
 
     local rotation = util.transform.identity
+    local initialRotation = nil
     if properties.rotation then
         rotation = properties.rotation
     elseif object then
         rotation = object.rotation
+        initialRotation = rotation
     end   
-    
     
     self.object = object
     self.position = position
+    self.initialPosition = initialPosition
+    self.initialRotation = initialRotation
     self.rotation = rotation
     self.origin = origin
     self.velocity = util.vector3(0, 0, 0)
@@ -156,24 +106,80 @@ function PhysicsObject:init(object, properties)
     self.ignoreWorldCollisions = false
     self.ignorePhysObjectCollisions = false
     self.radius = radius
-    self.largestDimension = largestDimension
-    self.mass = properties.mass or 1
+    self.largestHalfExtent = largestHalfExtent    
     self.drag = properties.drag or 0.33
     self.angularDrag = properties.angularDrag or 0.1 
     self.bounce = properties.bounce or 0.5    
     self.isSleeping = properties.isSleeping or false
     self.sleepTimer = 0
+    self.gravity = Gravity
+    self.resetOnLoad = false
+    self.collisionMode = properties.collisionMode or "sphere" -- "sphere" or "aabb". "aabb" is experimental, works decent with lockRotation, only aabb can work on objects that have their own collider.
+    self.isUnderwater = false
+    
+    self.cellBounds = nil -- Will be received later from global
+    self.player = nil -- Will be received later from global
+
+    -- Events
     self.onCollision = properties.onCollision or EventsManager:new()
     self.onIntersection = properties.onIntersection or EventsManager:new()
+    self.onMaterialUpdate = properties.onMaterialUpdate or EventsManager:new()
+
+    self:updateMaterial(properties.material or nil) -- Will be received later from global
+    -- updateMaterial calculates mass and buoyancy, reset them to ones provided to constructor, if necessary
+    if properties.mass then self.mass = properties.mass end 
+    if properties.buoyancy then self.buoyancy = properties.buoyancy end	
+
+    
+
+    -- This will make global send back an event with material, cellBounds and player
+    core.sendGlobalEvent(D.e.WhatIsMyPhysicsData, {
+        object = object
+    })
 end
 
+function PhysicsObject:updateMaterial(mat, recalcMass, recalcBuoyancy)
+    if recalcMass == nil then recalcMass = true end
+    if recalcBuoyancy == nil then recalcBuoyancy = true end
+    
+    self.material = mat
+    
+    -- Volume-based mass
+    if recalcMass then
+        local box = self.object:getBoundingBox()
+        local volume = (box.halfSize.x/D.GUtoM) * (box.halfSize.y/D.GUtoM) * (box.halfSize.z/D.GUtoM) --In meters^3
+        local density = 25 -- In kg/m^3 -- Density is so low since bbox-based volume is very innacurate
+        if self.material and self.material == "Metal" then density = 50 end
+        local mass = volume * density -- In kg
+        if mass < 1 then mass = 1 end
+        self.mass = mass
+    end
+
+    -- Material-based boyancy
+    if recalcBuoyancy then
+        self.buoyancy = 0.5
+        if self.material == "Wood" or self.material == "Glass" or self.material == "Organic" then
+            self.buoyancy = 1.05
+        elseif self.material == "Metal" then
+            self.buoyancy = 0.25
+        end
+    end
+
+    self.onMaterialUpdate:emit(self.material)
+end
+
+
 function PhysicsObject:reInit()
-    print("Reinitialising a physics object for: ", self.object)
+    --print("Reinitialising a physics object for: ", self.object)
     self.position = nil
     self.rotation = nil
     self.origin = nil
     self.radius = nil
     self:init(self.object, self)
+end
+
+function PhysicsObject:updateProperties(props)
+    gutils.shallowMergeTables(self, props)
 end
 
 
@@ -188,22 +194,62 @@ function PhysicsObject:serialize()
         isSleeping = self.isSleeping,
         bounce = self.bounce,
         mass = self.mass,
+        culprit = self.culprit,
         ignorePhysObjectCollisions = self.ignorePhysObjectCollisions
     }
+end
+
+function PhysicsObject:resetPosition(sleep)
+    if sleep == nil then sleep = true end
+    if self.initialPosition then self.position = self.initialPosition end
+    if self.initialRotation then self.rotation = self.initialRotation end
+    if sleep then self:sleep() end
+end
+
+function PhysicsObject:getPersistentData()
+    return {
+        initialPosition = self.initialPosition,
+        initialRotation = self.initialRotation,
+        resetOnLoad = self.resetOnLoad,
+        ignorePhysObjectCollisions = self.ignorePhysObjectCollisions
+    }
+end
+
+function PhysicsObject:loadPersistentData(data)
+    self:updateProperties(data)
+    if self.resetOnLoad then self:resetPosition(false) end
 end
 
 function PhysicsObject:setPositionUnadjusted(position)
     self.position = position + self.rotation:apply(self.origin)
 end
 
+function PhysicsObject:sleep()
+    self.isSleeping = true   
+    self.culprit = nil
+end
+
 function PhysicsObject:wakeUp()
-    self.isSleeping = false
+    self.isSleeping = false    
     self.sleepTimer = 0 -- Reset sleep timer when waking up
 end
 
-function PhysicsObject:applyImpulse(impulse) 
+function PhysicsObject:applyImpulse(impulse, culprit) 
+    -- print(self.mass)
     self.velocity = self.velocity + impulse / self.mass
+    self.culprit = culprit
     self:wakeUp() -- Wake up the object when an impulse is applied
+end
+
+function PhysicsObject:applyForce(force, culprit, wakeUp)
+    if wakeUp == nil then wakeUp = true end
+    if not wakeUp and self.isSleeping then return end
+    if not self.forceToApply then
+        self.forceToApply = util.vector3(0, 0, 0)
+    end
+    self.forceToApply = self.forceToApply + force
+    self.culprit = culprit
+    if wakeUp then self:wakeUp() end -- Wake up the object when a force is applied
 end
 
 function PhysicsObject:isCollidingWith(physObject)
@@ -225,37 +271,48 @@ function PhysicsObject:handleCollision(hitResult)
 
     if dot < 0 then
         -- Run collision callback
-        
-        if isNewContact then self.onCollision:emit(hitResult) end    
+        if isNewContact then 
+            self.onCollision:emit(hitResult) 
+            if hitResult.hitObject then 
+                hitResult.hitObject:sendEvent(D.e.CollidingWithPhysObj, {other = self:serialize()})
+            end
+        end    
 
         -- Reflect velocity and apply bounce factor
         self.velocity = -(normal * normal:dot(velocity) * 2 - velocity)
         self.velocity = self.velocity * self.bounce
 
-        -- Apply rotational damping
-        self.angularVelocity = self.angularVelocity * ImpactTorqueMult
+        -- Apply impact torque damping
+        self.angularVelocity = self.angularVelocity * ImpactAngVelDamping
 
-        -- Calculate torque from collision impact
-        local impactPoint = hitResult.hitPos
-        local collisionNormal = hitResult.hitNormal
-        local relativePosition = impactPoint - self.position
-        local torque = relativePosition:cross(-self.velocity)
-        local tangVelocity = torque/self.mass
-        local angularVeloctiy = tangVelocity/self.largestDimension
-        -- 6 is a magic number that makes collistion look fun, essentially its (probably) related to moment of inertia which is not accounted for at all
-        self.angularVelocity = self.angularVelocity + angularVeloctiy * 6
+        if not self.lockRotation then
+            -- Calculate torque from collision impact
+            local impactPoint = hitResult.hitPos        
+            local relativePosition = impactPoint - self.position
+            local torque = relativePosition:cross(-self.velocity)
+            local tangVelocity = torque
+            local angularVeloctiy = tangVelocity/self.largestHalfExtent
+            
+            -- 6 (ImpactAngVelDamping) is a magic number that makes collistion look fun, essentially its (probably) related to moment of inertia which is not accounted for at all
+            self.angularVelocity = self.angularVelocity + angularVeloctiy * ImpactAngVelMult
 
-        -- Clamp angular velocity to prevent it from growing uncontrollably
-        --[[ if self.angularVelocity:length() > MaxAngularVelocity then
-            self.angularVelocity = self.angularVelocity:normalize() * MaxAngularVelocity
-        end ]]
+            -- Clamp angular velocity to prevent it from growing uncontrollably
+            if self.angularVelocity:length() > MaxAngularVelocity then
+                self.angularVelocity = self.angularVelocity:normalize() * MaxAngularVelocity
+            end
+        end
+
+        return true
     else
         -- Run intersection callback
         if isNewContact then self.onIntersection:emit(hitResult) end
+        return false
     end
 end
 
-function PhysicsObject:handlePhysObjectCollision(physObject)
+function PhysicsObject:handlePhysObjectCollision(physObject, culprit)
+    if culprit then self.culprit = culprit end
+    
     local data1 = self
     local data2 = physObject
 
@@ -271,42 +328,74 @@ function PhysicsObject:handlePhysObjectCollision(physObject)
         -- Apply impulses to both objects
         local impulse = normal * impulseMagnitude
         data1.velocity = data1.velocity + impulse / data1.mass
-        data2.velocity = data2.velocity - impulse / data2.mass
+        --data2.velocity = data2.velocity - impulse / data2.mass
 
         data1:wakeUp()
         --data2:wakeUp()
     end
 end
 
-local frameDt = 0
+
+local maxDt = 1/20
 function PhysicsObject:update(dt)
-    frameDt = dt
+    if self.disabled then return end
+
+    if dt > maxDt then dt = maxDt end
 
     if not self.isSleeping then
-        --print("Internal Updating physics object: ", self.object)
+        -- Consume accumulated forces
+        if self.forceToApply and self.forceToApply:length() > 0 then
+            self.velocity = self.velocity + (self.forceToApply / self.mass) * dt
+            self.forceToApply = util.vector3(0, 0, 0) -- Reset accumulated forces after applying
+        end
 
         -- Apply Gravity
         self.velocity = self.velocity + Gravity * dt
+
+        -- Water Physics
+        local waterline = omwself.cell.waterLevel
+        if waterline and not PhysicsObject.isSleeping then
+            if self.position.z < waterline then
+                -- We are underwater
+                if not self.isUnderwater then
+                    -- We just transitioned from above water to underwater
+                    self.velocity = self.velocity * WaterHitVelDamping
+                end
+                self.isUnderwater = true
+                
+                -- Apply Buoyoncy
+                local buoyForce = Gravity * self.mass * -1 * self.buoyancy
+                self.velocity = self.velocity + buoyForce * dt
+            end
+        end
 
         -- Apply drag
         self.velocity = self.velocity * (1 - self.drag * dt)
 
         -- Calculate displacement
         local displacement = self.velocity * dt
-        
-        -- Perform sphere raycast for collision detection with environment
+
+        -- Perform collision detection
+        local collided = false
+        local hitResult = nil
         local rayStart = self.position
         local rayEnd = rayStart + displacement
-        
-        -- Check for collisions with the environment (sphere)
-        local collided = false
 
         if not self.ignoreWorldCollisions then
-            local sphereHitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
-            if sphereHitResult.hit then
-                self:handleCollision(sphereHitResult)
-                self.position = calcSpherePosAtHit(rayStart, rayEnd, sphereHitResult.hitPos, self.radius)
-                collided = true
+            if self.collisionMode == "sphere" then
+                hitResult = nearby.castRay(rayStart, rayEnd, { radius = self.radius })
+            elseif self.collisionMode == "aabb" then
+                hitResult = phUtils.customRaycastAABB(rayStart, rayEnd, self.radius, self.object:getBoundingBox(), self.rotation, { ignore = self.object })
+            end
+
+            if hitResult and hitResult.hit then
+                collided = self:handleCollision(hitResult)
+                if self.collisionMode == "sphere" then
+                    -- Update position on collision to get close to a surface without penetrating
+                    if collided then self.position = phUtils.calcSpherePosAtHit(self.position, displacement, hitResult.hitPos, self.radius) end
+                elseif self.collisionMode == "aabb" then
+                    -- Dont update position on collision, to ensure no penetration
+                end
             end
         end
 
@@ -330,14 +419,13 @@ function PhysicsObject:update(dt)
 
         -- Realign when close to rest state
         if self.realignWhenRested then
-            -- FIX ME; rest is now based on speed, not anglar speed, so realignment will probably not work as intended
+            -- FIX ME; rest is now based on speed, not angular speed, so realignment will probably not work as intended
             if not self.rotationInfluence then self.rotationInfluence = 0 end
             local speed = self.actualVelocity:length()
             if speed < SleepSpeed then
-                --self.rotationInfluence = 1 - speed / SleepSpeed
                 self.rotationInfluence = self.sleepTimer / SleepTime
                 if self.rotationInfluence > 0 then
-                    self.rotation = slerpRotation(self.rotation, util.transform.identity, self.rotationInfluence)
+                    self.rotation = phUtils.slerpRotation(self.rotation, util.transform.identity, self.rotationInfluence)
                 end
             else
                 self.rotationInfluence = 0
@@ -345,7 +433,13 @@ function PhysicsObject:update(dt)
         end
     end
 
-    core.sendGlobalEvent("LuaPhysics_UpdateVisPos", self:serialize())
+    if not self.isSleeping then
+        core.sendGlobalEvent(D.e.UpdateVisPos, self:serialize())
+    elseif not self.player or (self.position - self.player.position):length()/75 <= 50  then
+        -- Even sleeping objects shoud send out this data - so global can wake them up if necessary
+        core.sendGlobalEvent(D.e.UpdateVisPos, self:serialize())
+    end
+    
 end
 
 function PhysicsObject:trySleep(dt)
@@ -355,7 +449,7 @@ function PhysicsObject:trySleep(dt)
     if speed < SleepSpeed then        
         self.sleepTimer = self.sleepTimer + dt
         if self.sleepTimer >= SleepTime then
-            self.isSleeping = true
+            self:sleep()
         end
     else
         self.sleepTimer = 0 -- Reset sleep timer if velocity or angular velocity exceeds threshold

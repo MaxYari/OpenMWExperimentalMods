@@ -7,6 +7,7 @@ local omwself = require('openmw.self')
 local EventsManager = require(mp .. "scripts/events_manager")
 
 local events = EventsManager:new()
+local onHitKey = EventsManager:new()
 
 local function addOnKeyHandler(cb)
     events:addEventHandler(cb)
@@ -59,15 +60,22 @@ function Animation:removeOnKeyHandler()
     removeOnKeyHandler(self.eventHandler)
 end
 
-I.AnimationController.addTextKeyHandler(nil, function(...)
-    events:emit(...)
+local maxAttackReached = false
+I.AnimationController.addTextKeyHandler(nil, function(groupname, key)
+    events:emit(groupname, key)
+    if key:match(" max attack$") then maxAttackReached = true end
+    if key:match(" hit$") then 
+        onHitKey:emit(groupname, key, maxAttackReached)
+        maxAttackReached = false
+    end
 end)
 
 local module = {
     Animation = Animation,
     isPlaying = isPlaying,
     addOnKeyHandler = addOnKeyHandler,
-    removeOnKeyHandler = removeOnKeyHandler
+    removeOnKeyHandler = removeOnKeyHandler,
+    onHitKey = onHitKey
 }
 
 return module

@@ -1,6 +1,7 @@
 local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
+local aux_util = require('openmw_aux.util')
 local markup = require('openmw.markup')
 local sstatus, omwself = pcall(require, "openmw.self")
 local nstatus, nearby = pcall(require, "openmw.nearby")
@@ -12,6 +13,24 @@ local fFightDispMult = core.getGMST("fFightDispMult")
 -- Generic utility functions --
 
 local module = {}
+
+local function readYamlFile(path)   
+    local parsedData = {} 
+    if vfs.fileExists(path) then
+        local fileHandle, err = vfs.open(path)
+        if fileHandle then
+            local yamlContent = fileHandle:read("*all")
+            fileHandle:close()
+            parsedData = markup.decodeYaml(yamlContent)            
+        else
+            print("Error opening file:", err)
+        end
+    else
+        print("File does not exist:", path)
+    end
+    return parsedData
+end
+module.readYamlFile = readYamlFile
 
 -- Helper print function
 -- Author: mostly ChatGPT
@@ -168,6 +187,15 @@ local function shallowTableCopy(orig)
 end
 module.shallowTableCopy = shallowTableCopy
 
+local function shallowArrayCopy(orig)
+    local tablecopy = {}
+    for i, el in ipairs(orig) do
+        table.insert(tablecopy, el)
+    end
+    return tablecopy
+end
+module.shallowArrayCopy = shallowArrayCopy
+
 local function shallowMergeTables(table1, table2)
     for key, value in pairs(table2) do
         table1[key] = value
@@ -221,7 +249,7 @@ local function findField(dictionary, value)
 end
 module.findField = findField
 
-local function cache(fn, delay)
+local function cachedFunction(fn, delay)
     delay = delay or 0.25 -- default delay is 0.25 seconds
     local lastExecution = 0
     local c1, c2 = nil, nil
@@ -237,7 +265,7 @@ local function cache(fn, delay)
         return c1, c2, "new"
     end
 end
-module.cache = cache
+module.cachedFunction = cachedFunction
 
 
 local function randomDirection()
@@ -333,6 +361,7 @@ Actor.DET_STANCE = {
     Marksman = "Marksman",
     Melee = "Melee"
 }
+Actor.SKILL = core.stats.Skill.records
 
 function Actor:new(go, omwClass)
     if not omwClass then omwClass = types.Actor end
@@ -438,6 +467,31 @@ function Actor:canOpenDoor(door)
         end
     end
     return canOpen
+end
+
+local fCombatDistance = core.getGMST("fCombatDistance")
+local fHandToHandReach = core.getGMST("fHandToHandReach")
+function Actor:getAttackRange()
+    -- Get weapon stats
+    local weaponObj = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local weaponRecord = { id = nil }
+    if weaponObj then weaponRecord = types.Weapon.record(weaponObj.recordId) end
+   
+    if weaponRecord.id then
+        return weaponRecord.reach * fCombatDistance
+    else
+        return fHandToHandReach * fCombatDistance
+    end
+end
+
+local function getSkill(npc, skill)
+    -- Probably the return value of below call is a reference object and can be saved? Do they need to be saved?
+    return types.NPC.stats.skills[skill.id](npc)
+end
+module.getSkill = getSkill
+
+function Actor:getSkill(skill)
+    return getSkill(self.gameObject, skill)
 end
 
 module.Actor = Actor
@@ -583,24 +637,117 @@ end
 
 module.stringStartsWith = stringStartsWith
 
-local function readYamlFile(path)   
-    local parsedData = {} 
-    if vfs.fileExists(path) then
-        local fileHandle, err = vfs.open(path)
-        if fileHandle then
-            local yamlContent = fileHandle:read("*all")
-            fileHandle:close()
-            parsedData = markup.decodeYaml(yamlContent)            
-        else
-            print("Error opening file:", err)
-        end
-    else
-        print("File does not exist:", path)
-    end
-    return parsedData
-end
 
-module.readYamlFile = readYamlFile
+
+local GenericCache = {}
+function GenericCache:new(ttl)
+    -- Create a new object with initial properties
+    local obj = {
+        ttl = ttl,
+        values = {},
+    }
+
+    -- Define the sample function for the sampler instance
+    function obj:execute(key, fn)
+        local cached = self:get(key)
+        if not cached then
+            cached = self:put(key, fn())
+        end
+        return cached.data
+    end
+
+    function obj:get(key)
+        local now = core.getRealTime()
+        local cached = self.values[key]
+        if cached and now - cached.createdAt <= ttl then 
+            return cached
+        else
+            self.values[key] = nil
+            return nil
+        end
+    end
+
+    function obj:put(key, data)
+        local now = core.getRealTime()
+
+        if type(data) == "table" then
+            print("Making data readonly") 
+            data = util.makeReadOnly(data) 
+        end
+        
+        local cached = {
+            createdAt = now,
+            data = data
+        }
+        self.values[key] = cached
+        return cached
+    end
+
+    -- Set the metatable for the new object to use the class methods
+    setmetatable(obj, self)
+    self.__index = self
+
+    return obj
+end
+module.GenericCache = GenericCache
+
+local cellCaches = {}
+local function findNpcsInCellCached(cell, filterFn, cacheKey, cacheTTL)
+    if not cacheTTL then cacheTTL = 3 end
+    
+    if not cellCaches[cell.id] then
+        cellCaches[cell.id] = GenericCache:new(cacheTTL)
+    end
+    local cache = cellCaches[cell.id]
+
+    -- Find all npcs who cares (or get them from cache)
+    
+    local cachedNpcs = cache:get(cacheKey)
+    if not cachedNpcs then
+        cachedNpcs = cache:put(cacheKey, aux_util.mapFilter(cell:getAll(types.NPC),filterFn))
+    end
+    
+    return cachedNpcs.data
+end
+module.findNpcsInCellCached = findNpcsInCellCached
+
+
+local cellBoundsCache = {}
+local function getCellBounds(cell, ignoreCache)
+    if not cell then return nil end
+    if ignoreCache == nil then ignoreCache = false end
+
+    -- Check cache
+    if cellBoundsCache[cell.id] and not ignoreCache then
+        return cellBoundsCache[cell.id]
+    end
+
+    local minBounds = util.vector3(math.huge, math.huge, math.huge)
+    local maxBounds = util.vector3(-math.huge, -math.huge, -math.huge)
+
+    for _, static in ipairs(cell:getAll(types.Static)) do
+        local box = static:getBoundingBox()
+        if box and box.vertices then
+            for _, vertex in ipairs(box.vertices) do
+                minBounds = util.vector3(
+                    math.min(minBounds.x, vertex.x),
+                    math.min(minBounds.y, vertex.y),
+                    math.min(minBounds.z, vertex.z)
+                )
+                maxBounds = util.vector3(
+                    math.max(maxBounds.x, vertex.x),
+                    math.max(maxBounds.y, vertex.y),
+                    math.max(maxBounds.z, vertex.z)
+                )
+            end
+        end
+    end
+
+    local bounds = { min = minBounds, max = maxBounds }
+    cellBoundsCache[cell.id] = bounds -- Cache the result
+    return bounds
+end
+module.getCellBounds = getCellBounds
 
 local function spawnObject(recordId, position, cell, onGround)
     if onGround == nil then onGround = false end
@@ -620,5 +767,6 @@ local function genSequentialId()
     return id
 end
 module.genSequentialId = genSequentialId
+
 
 return module

@@ -1,15 +1,14 @@
 local mp = 'scripts/MaxYari/experiments/'
 
-local core = require('openmw.core')
+
 local world = require('openmw.world')
-local util = require('openmw.util')
 local types = require('openmw.types')
 local I = require('openmw.interfaces')
 local vfs = require('openmw.vfs')
 
 local gutils = require(mp..'scripts/gutils')
-local PhysicsObject = require(mp..'PhysicsObject')
-local PhysicsUtils = require(mp..'PhysicsUtilities')
+local PhysicsUtils = require(mp..'scripts/physics_utils')
+local D = require(mp..'scripts/physics_defs')
 
 local debrisMap = {}
 
@@ -23,38 +22,33 @@ end
 
 -- Build debris map at startup
 local function buildDebrisMap()
-    for filePath in vfs.pathsWithPrefix("meshes/m/debris") do
+    for filePath in vfs.pathsWithPrefix("meshes/debris") do
         if filePath:find("%.nif$") then
-            local fileName = getCleanName(filePath) -- Pass `true` for debris chunks
-            local recordId = fileName:lower() -- Use the clean chunk name as the record ID
+            local fileName = getCleanName(filePath)
             local objectName = fileName:gsub("__.+$", "") -- Remove trailing "__something" for debris chunks
             
             if not debrisMap[objectName] then
                 debrisMap[objectName] = {}
             end
-            
-            local record = types.Miscellaneous.record(recordId)
 
-            -- Create a new record if it doesn't exist
-            if not record then
-                print("Creating new record for debris chunk:", recordId)
+            if debrisMap[objectName][filePath] then
+                local recordId = debrisMap[objectName][filePath]
+                --print("Chunk record exists:", filePath, recordId)
+            else 
+                --print("Chunk record does not exist, making for:", filePath)
                 local tempRecord = types.Miscellaneous.createRecordDraft({
-                    id = recordId,
                     name = "Debris",
                     model = filePath,
                     icon = "icons/m/debris.dds",
-                })
-                record = world.createRecord(tempRecord)
-                print("World record created", record.id)
+                })                
+                local record = world.createRecord(tempRecord) 
+                debrisMap[objectName][filePath] = record.id
             end
-
-            table.insert(debrisMap[objectName], record.id)
         end
     end
-    print("Debris map built")
+    --print("Debris map built")
 end
--- Initialize debris map at startup
-buildDebrisMap()
+
 
 -- Function to split an item stack into smaller stacks
 local function splitItemStack(item, nSplits)
@@ -70,10 +64,11 @@ local function splitItemStack(item, nSplits)
 end
 
 local function handleContainer(eventData)
+    
     -- Handle container contents if the object is a container
     local object = eventData.object
     local position = object.position
-    local baseImpulse = eventData.baseImpulse
+    local baseImpulse = eventData.baseImpulse    
     
     print("Handling container fracture",object)
     local inventory = types.Container.content(object)
@@ -81,11 +76,11 @@ local function handleContainer(eventData)
     local contents = inventory:getAll()
     print(contents)
     for _, item in pairs(contents) do
-        print("Item in container:", item.recordId)
+        -- print("Item in container:", item.recordId)
         local splitItems = splitItemStack(item, 5) -- Split the item stack into 5 smaller stacks
         for _, it in ipairs(splitItems) do
             it:teleport(object.cell, position)
-            it:sendEvent("ApplyImpulse", { impulse = PhysicsUtils.randomizeImpulse(baseImpulse, 0.33) })
+            it:sendEvent(D.e.ApplyImpulse, { impulse = PhysicsUtils.randomizeImpulse(baseImpulse, 0.33) })
         end
     end
     
@@ -93,10 +88,10 @@ end
 
 local function handlePotion(e)
     local object = e.object
-    if not e.hitObject then return end
+    if not e.source then return end
     -- Apply potion effect
-    if e.hitObject and types.Actor.objectIsInstance(e.hitObject) and types.Potion.objectIsInstance(e.object) then
-        types.Actor.activeSpells(e.hitObject):add({
+    if e.source and types.Actor.objectIsInstance(e.source) and types.Potion.objectIsInstance(e.object) then
+        types.Actor.activeSpells(e.source):add({
             id = object.recordId,
             effects = {0},
             name = "Struck by potion",
@@ -104,7 +99,7 @@ local function handlePotion(e)
             quiet = false
         })
         -- Commit a crime
-        I.Crimes.commitCrime(world.players[1], {victim = e.hitObject, type = types.Player.OFFENSE_TYPE.Assault})
+        I.Crimes.commitCrime(world.players[1], {victim = e.source, type = types.Player.OFFENSE_TYPE.Assault})
     end
 end
 
@@ -119,28 +114,23 @@ local function handleFractureMe(eventData)
     cleanName = cleanName:gsub("_[%d]+$", "") -- Remove trailing "_number" for model names
 
     -- Check if debris exists for this object
-    if not debrisMap[cleanName] then
-        print("No debris found for:", cleanName)
-        return
-    end
+    if not debrisMap[cleanName] then return end
 
     -- Spawn debris chunks
-    for _, recordId in ipairs(debrisMap[cleanName]) do
+    for _, recordId in pairs(debrisMap[cleanName]) do
         local chunkObject = world.createObject(recordId)
         chunkObject:teleport(object.cell, position, { rotation = object.rotation })
         chunkObject:setScale(object.scale)
 
         -- Apply impulse to the debris chunk
-        chunkObject:sendEvent("SetPhysicsProperties", { ignorePhysObjectCollisions = true })
-        chunkObject:sendEvent("ApplyImpulse", { impulse = PhysicsUtils.randomizeImpulse(baseImpulse, 0.33) })
+        chunkObject:sendEvent(D.e.SetPhysicsProperties, { ignorePhysObjectCollisions = true, material = I.LuaPhysics.getMaterialFromObject(object) })
+        chunkObject:sendEvent(D.e.ApplyImpulse, { impulse = PhysicsUtils.randomizeImpulse(baseImpulse, 0.33) })
     end
 
     -- Play crash sound
-    local params = { volume = 2, pitch = 1, loop = false }
-    I.LuaPhysics.playMaterialSound({
-        source = object,
-        material = "wood_crash",
-        params = params
+    I.LuaPhysics.playCrashSound({
+        object = object,
+        params = { volume = 2, pitch =  0.8 + math.random() * 0.2, loop = false }
     })
 
     -- print("Object type",object.type,object.recordId)
@@ -154,13 +144,25 @@ local function handleFractureMe(eventData)
     object:remove()
 end
 
+local function onSave()
+    return {
+        debrisMap = debrisMap,
+    }
+end
 
+local function onLoad(data)
+    if not data then return end
+    --print("OnLoad, debris map:", data.debrisMap)
+    debrisMap = data.debrisMap or {}
+    buildDebrisMap()
+end
 
 return {
     engineHandlers = {
-        
+        onSave = onSave,
+        onLoad = onLoad
     },
     eventHandlers = {
-        FractureMe = handleFractureMe
+        [D.e.FractureMe] = handleFractureMe
     }
 }

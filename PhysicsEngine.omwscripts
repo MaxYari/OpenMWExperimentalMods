@@ -1,7 +1,0 @@
-GLOBAL: scripts\MaxYari\experiments\PhysicsEngineGlobal.lua
-PLAYER: scripts\MaxYari\experiments\PhysicsEnginePlayer.lua
-NPC: scripts\MaxYari\experiments\PhysicsEngineNPC.lua
-CUSTOM, CLOTHING, ARMOR, BOOK, INGREDIENT, MISC_ITEM, POTION, WEAPON, APPARATUS, LOCKPICK, PROBE, REPAIR: scripts\MaxYari\experiments\PhysicsEngineLocal.lua
-MISC_ITEM: scripts\MaxYari\experiments\PhysicsDestructibleObject.lua
-GLOBAL: scripts\MaxYari\experiments\PhysicsDestructibleGlobal.lua
-PLAYER: scripts\MaxYari\experiments\PhysicsDestructiblePlayer.lua

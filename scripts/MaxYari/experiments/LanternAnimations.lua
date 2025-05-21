@@ -52,6 +52,7 @@ local lanternConfigs = {
 }
 
 local function findLanterns(cell)
+    lanterns = {}
     for _, obj in ipairs(cell:getAll()) do
         for _, config in ipairs(lanternConfigs) do
             if obj.recordId:find(config.name) then

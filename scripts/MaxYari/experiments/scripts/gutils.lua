@@ -249,6 +249,17 @@ local function findField(dictionary, value)
 end
 module.findField = findField
 
+local function arrayContains(tab, val)
+    for index, value in ipairs(tab) do
+        if value == val then
+            return true
+        end
+    end
+
+    return false
+end
+module.arrayContains = arrayContains
+
 local function cachedFunction(fn, delay)
     delay = delay or 0.25 -- default delay is 0.25 seconds
     local lastExecution = 0
@@ -637,7 +648,10 @@ end
 
 module.stringStartsWith = stringStartsWith
 
-
+local function lookDirection(actor)
+    return actor.rotation:apply(util.vector3(0, 1, 0))
+end
+module.lookDirection = lookDirection
 
 local GenericCache = {}
 function GenericCache:new(ttl)

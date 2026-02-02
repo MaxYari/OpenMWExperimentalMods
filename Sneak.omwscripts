@@ -1,0 +1,2 @@
+PLAYER: scripts\MaxYari\experiments\SneakPlayer.lua
+NPC, CREATURE: scripts\MaxYari\experiments\SneakActor.lua

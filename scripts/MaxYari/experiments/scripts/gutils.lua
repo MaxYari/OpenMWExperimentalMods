@@ -46,7 +46,7 @@ local function uprint(...)
         for i, v in ipairs(args) do
             args[i] = tostring(v)
         end
-        local messageHeader = "[Mercy]"
+        local messageHeader = "[Experiments]"
         if omwself then messageHeader = messageHeader .. "[" .. omwself.recordId .. "]" end
         print(messageHeader .. ":", table.concat(args, " "))
     end
@@ -249,6 +249,16 @@ local function findField(dictionary, value)
 end
 module.findField = findField
 
+local function findInList(list, cb)
+    for index, value in ipairs(list) do
+        if cb(value, index) then
+            return value, index
+        end
+    end
+
+    return nil
+end
+
 local function arrayContains(tab, val)
     for index, value in ipairs(tab) do
         if value == val then
@@ -260,9 +270,14 @@ local function arrayContains(tab, val)
 end
 module.arrayContains = arrayContains
 
-local function cachedFunction(fn, delay)
+local function cachedFunction(fn, delay, startDelay)
     delay = delay or 0.25 -- default delay is 0.25 seconds
+    local currentTime = core.getRealTime()
     local lastExecution = 0
+    if startDelay then
+        lastExecution = currentTime + startDelay
+    end
+
     local c1, c2 = nil, nil
 
     return function(...)
@@ -332,6 +347,15 @@ local function lerpClamped(a, b, t)
 end
 module.lerpClamped = lerpClamped
 
+local function lerpColor(a,b,t)
+    return util.color.rgb(
+        lerpClamped(a.r, b.r, t),
+        lerpClamped(a.g, b.g, t),
+        lerpClamped(a.b, b.b, t)
+    )
+end
+module.lerpColor = lerpColor
+
 local function lerpAngle(a1, a2, t)
     local diff = a2 - a1
     if diff > math.pi then
@@ -372,13 +396,15 @@ Actor.DET_STANCE = {
     Marksman = "Marksman",
     Melee = "Melee"
 }
-Actor.SKILL = core.stats.Skill.records
 
 function Actor:new(go, omwClass)
     if not omwClass then omwClass = types.Actor end
     local instance = {
         gameObject = go,
-        omwClass = omwClass
+        omwClass = omwClass,
+        skillStatDatas = {},
+        attributeStatDatas = {},
+        dynamicStatDatas = {}
     }
     setmetatable(instance, self)
     return instance
@@ -402,7 +428,6 @@ function Actor:__index(key)
     end
 end
 
-
 function Actor:getDumpableInventoryItems()
     -- data.actor, data.position
     local items = {}
@@ -423,7 +448,7 @@ end
 function Actor:isVampire()
     -- Based on Urm's function
     local vampirism = self:activeEffects():getEffect('vampirism')
-    local isVampire = not vampirism or vampirism.magnitude > 0
+    local isVampire = vampirism and vampirism.magnitude > 0
     return isVampire
 end
 
@@ -448,6 +473,12 @@ end
 
 function Actor:isWarrior()
     return not self:isSpellCaster() and not self:isMarksman()
+end
+
+function Actor:isAGuard()
+    if not types.NPC.objectIsInstance(self.gameObject) then return false end
+    local className = types.NPC.record(self.gameObject.recordId).class
+    return className == "guard"
 end
 
 function Actor:getDetailedStance()
@@ -480,30 +511,55 @@ function Actor:canOpenDoor(door)
     return canOpen
 end
 
-local fCombatDistance = core.getGMST("fCombatDistance")
-local fHandToHandReach = core.getGMST("fHandToHandReach")
-function Actor:getAttackRange()
-    -- Get weapon stats
-    local weaponObj = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
-    local weaponRecord = { id = nil }
-    if weaponObj then weaponRecord = types.Weapon.record(weaponObj.recordId) end
-   
-    if weaponRecord.id then
-        return weaponRecord.reach * fCombatDistance
+function Actor:healthStat()
+    if not self.healthStatData then self.healthStatData = self.stats.dynamic.health() end
+    return self.healthStatData
+end
+
+function Actor:aiFightStat()
+    if not self.aiFightStatData then self.aiFightStatData = self.stats.ai.fight() end
+    return self.aiFightStatData
+end
+
+function Actor:aiFleeStat()
+    if not self.aiFleeStatData then self.aiFleeStatData = self.stats.ai.flee() end
+    return self.aiFleeStatData
+end
+
+function Actor:levelStat()
+    if not self.levelStatData then self.levelStatData = self.stats.level() end
+    return self.levelStatData
+end
+
+function Actor:getSkillStat(skillId)
+    if not self.skillStatDatas[skillId] then
+        self.skillStatDatas[skillId] = types.NPC.stats.skills[skillId](self.gameObject)
+    end
+    return self.skillStatDatas[skillId]
+end
+
+function Actor:getSneakValue(ast)
+    if types.NPC.objectIsInstance(self.gameObject) then
+        return self:getSkillStat("sneak").modified
     else
-        return fHandToHandReach * fCombatDistance
+        return types.Creature.record(self.gameObject).stealthSkill
     end
 end
 
-local function getSkill(npc, skill)
-    -- Probably the return value of below call is a reference object and can be saved? Do they need to be saved?
-    return types.NPC.stats.skills[skill.id](npc)
+function Actor:getDynamicStat(statId)
+    if not self.dynamicStatDatas[statId] then
+        self.dynamicStatDatas[statId] = self.stats.dynamic[statId]()
+    end
+    return self.dynamicStatDatas[statId]
 end
-module.getSkill = getSkill
 
-function Actor:getSkill(skill)
-    return getSkill(self.gameObject, skill)
+function Actor:getAttributeStat(attrId)
+    if not self.attributeStatDatas[attrId] then
+        self.attributeStatDatas[attrId] = self.stats.attributes[attrId]()
+    end
+    return self.attributeStatDatas[attrId]
 end
+
 
 module.Actor = Actor
 

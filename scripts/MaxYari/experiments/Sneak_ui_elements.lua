@@ -13,8 +13,8 @@ DetectionMarker.__index = DetectionMarker
 
 -- Config
 local markerSizeScale = 1.0
-local markerEmptyColor = util.color.hex("0f0f1f")
-local markerFullColor = util.color.hex("efc36b")
+local markerBgColor = util.color.hex("0f0f1f")
+local markerFillColor = util.color.hex("efc36b")
 
 local markerSize= util.vector2(50, 50) * markerSizeScale -- Size of the detection marker UI element
 local disapearAnimSize = markerSize * 1.5 -- Size to scale to when disappearing
@@ -39,13 +39,23 @@ function DetectionMarker:new()
         },
         content = ui.content {
             {
-                name = "detectionMarkerImage",
+                name = "detectionMarkerBg",
                 type = ui.TYPE.Image,
                 props = {
                     relativeSize = util.vector2(1, 1),
-                    color = markerEmptyColor,
+                    color = markerBgColor,
                     alpha = 0.5,
                     resource = ui.texture { path = mp .. "textures/detection_marker_bg.png" }
+                }
+            },
+            {
+                name = "detectionMarkerGlow",
+                type = ui.TYPE.Image,
+                props = {
+                    relativeSize = util.vector2(1, 1),
+                    color = markerFillColor,
+                    alpha = 0.5,
+                    resource = ui.texture { path = mp .. "textures/detection_marker_glow.png" }
                 }
             },
             {
@@ -59,12 +69,12 @@ function DetectionMarker:new()
                 },
                 content = ui.content {
                     {
-                        name = "detectionFillImage",
+                        name = "detectionFill",
                         type = ui.TYPE.Image,
                         props = {
                             alpha = 0.8,
                             size = markerSize, -- Same as parent to fill when relativeSize is 1,1
-                            color = markerEmptyColor,
+                            color = markerFillColor,
                             relativePosition = util.vector2(0.5, 1),
                             anchor = util.vector2(0.5, 1),
                             resource = ui.texture { path = mp .. "textures/detection_marker_fill.png" }
@@ -84,14 +94,16 @@ end
 -- Method to set the detection progress
 function DetectionMarker:setProgress(progress)
     -- Clamp progress between 0 and 1
-    local clampedProgress = math.max(0, math.min(1, progress))
-    local color = gutils.lerpColor(markerEmptyColor, markerFullColor, clampedProgress)
+    progress = util.clamp(progress, 0, 1) math.max(0, math.min(1, progress))
+    local fillProgress = util.remap(progress, 0, 1, 0.2, 0.8)
+    -- local color = gutils.lerpColor(markerBgColor, markerFillColor, progress)
+    local fillAlpha = gutils.lerp(0.33, 0.8, progress)
+    local glowAlpha = gutils.lerp(0.1, 1, progress)
 
     -- Update the relative height of the wrapper to reveal more of the image
-    self.element.layout.content["detectionFillWrapper"].props.relativeSize =
-        util.vector2(1, clampedProgress)
-    self.element.layout.content["detectionFillWrapper"].content["detectionFillImage"].props.color =
-        color
+    self.element.layout.content["detectionFillWrapper"].props.relativeSize = util.vector2(1, fillProgress)
+    self.element.layout.content["detectionFillWrapper"].content["detectionFill"].props.alpha = fillAlpha
+    self.element.layout.content["detectionMarkerGlow"].props.alpha = glowAlpha
 
     self.element:update()
 end
@@ -223,7 +235,7 @@ function DetectionMarker:disappear(wasSuccessful, autoDestroy)
             if wasSuccessful == true then
                 local newSize = gutils.lerp(initialSize, disapearAnimSize, value)            
                 self.element.layout.props.size = newSize
-                self.element.layout.content["detectionFillWrapper"].content["detectionFillImage"].props.size = newSize
+                self.element.layout.content["detectionFillWrapper"].content["detectionFill"].props.size = newSize
             end
 
             -- Interpolate alpha from current alpha to 0 using gutils.lerp

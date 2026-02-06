@@ -838,5 +838,19 @@ local function genSequentialId()
 end
 module.genSequentialId = genSequentialId
 
+-- Animation-related helper functions
+local attackTypes = { "chop", "slash", "thrust", "shoot" }
+local function isAttackType(key, suffix)
+    if suffix then suffix = " " .. suffix end
+    if not suffix then suffix = "" end
+    for _, type in ipairs(attackTypes) do
+        if string.find(key, type .. suffix) then
+            return type
+        end
+    end
+    return false
+end
+module.isAttackType = isAttackType
+
 
 return module

@@ -262,6 +262,7 @@ local function detectionCheck(dt)
             --------------------------------
             if distance <= detectionRange and not ast.isFriend then                    
                 if ast.checker == nil then
+                    -- TO DO: This will not work, they will all do it at the same time, since after first execution theyll align
                     ast.checker = gutils.cachedFunction(sneakCheck, sneakCheckPeriod, -math.random() * sneakCheckPeriod - sneakCheckPeriod)
                 end
                 if ast.followTargetsChecker == nil then
@@ -368,6 +369,8 @@ local function onUpdate(dt)
     for actorId, ast in pairs(observerActorStatuses) do
         if ast.marker then ast.marker:updateTweeners(dt) end
     end
+
+    
 end
 
 

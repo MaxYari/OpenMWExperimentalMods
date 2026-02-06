@@ -7,7 +7,7 @@
    viewBox="0 0 88.939019 82.627777"
    version="1.1"
    id="svg1"
-   inkscape:export-filename="detection_marker_bg.png"
+   inkscape:export-filename="detection_marker_glow.png"
    inkscape:export-xdpi="57.11779"
    inkscape:export-ydpi="57.11779"
    inkscape:version="1.4.2 (ebf0e94, 2025-05-08)"
@@ -26,9 +26,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="0.49386369"
-     inkscape:cx="-393.83337"
-     inkscape:cy="-56.695806"
+     inkscape:zoom="1.3968575"
+     inkscape:cx="56.55552"
+     inkscape:cy="112.39515"
      inkscape:window-width="1920"
      inkscape:window-height="1002"
      inkscape:window-x="0"
@@ -66,7 +66,7 @@
        d="m 87.625695,127.53578 a 27.275509,27.275509 0 0 0 -9.901204,20.9641 27.275509,27.275509 0 0 0 27.275339,27.27585 27.275509,27.275509 0 0 0 27.27585,-27.27585 27.275509,27.275509 0 0 0 -9.9012,-20.96358 18.971512,18.971512 0 0 1 1.5968,7.57008 18.971512,18.971512 0 0 1 -18.97145,18.97145 18.971512,18.971512 0 0 1 -18.971453,-18.97145 18.971512,18.971512 0 0 1 1.597318,-7.5706 z" />
     <path
        id="path1"
-       style="fill:#ffffff;fill-opacity:1;stroke-width:3.01501;opacity:1"
+       style="fill:#000000;fill-opacity:1;stroke-width:3.01501;opacity:1"
        d="m 122.37448,127.53578 a 27.275509,27.275509 0 0 1 9.9012,20.9641 27.275509,27.275509 0 0 1 -27.27534,27.27585 27.275509,27.275509 0 0 1 -27.275849,-27.27585 27.275509,27.275509 0 0 1 9.9012,-20.96358 18.971512,18.971512 0 0 0 -1.5968,7.57008 18.971512,18.971512 0 0 0 18.971449,18.97145 18.971512,18.971512 0 0 0 18.97145,-18.97145 18.971512,18.971512 0 0 0 -1.59731,-7.5706 z" />
   </g>
 </svg>

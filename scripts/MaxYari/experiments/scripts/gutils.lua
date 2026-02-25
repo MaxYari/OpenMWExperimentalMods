@@ -279,15 +279,23 @@ local function cachedFunction(fn, delay, startDelay)
     end
 
     local c1, c2 = nil, nil
+    local isFirstRun = true
 
     return function(...)
         local currentTime = core.getRealTime()
-        if currentTime - lastExecution < delay then
+        if currentTime - lastExecution < delay and not isFirstRun then
             return c1, c2, "cached"
         end
 
-        lastExecution = currentTime
+        
         c1, c2 = fn(...)
+
+        if not isFirstRun then
+            lastExecution = currentTime
+        else
+            ifFirstRun = false
+        end
+
         return c1, c2, "new"
     end
 end
@@ -481,14 +489,14 @@ function Actor:isAGuard()
     return className == "guard"
 end
 
-function Actor:getDetailedStance()
-    local stance = self:getStance()
+function getDetailedStance(actor)
+    local stance = types.Actor.getStance(actor)
     if stance == types.Actor.STANCE.Nothing then
         return Actor.DET_STANCE.Nothing
     elseif stance == types.Actor.STANCE.Spell then
         return Actor.DET_STANCE.Spell
     elseif stance == types.Actor.STANCE.Weapon then
-        local weapon = self:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+        local weapon = types.Actor.getEquipment(actor, types.Actor.EQUIPMENT_SLOT.CarriedRight)
         if isMarksmanWeapon(weapon) then
             return Actor.DET_STANCE.Marksman
         else
@@ -496,6 +504,13 @@ function Actor:getDetailedStance()
         end
     end
 end
+module.getDetailedStance = getDetailedStance
+
+function Actor:getDetailedStance()
+    return getDetailedStance(self.gameObject)
+end
+
+
 
 function Actor:canOpenDoor(door)
     local canOpen = true

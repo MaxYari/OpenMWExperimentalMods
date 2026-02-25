@@ -1,3 +1,21 @@
+--[[
+Better Sneak for OpenMW.
+Copyright (C) 2026 Maksim Eremenko, Erin Pentecost
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+]]
+
 local mp = "scripts/MaxYari/experiments/"
 
 local I = require("openmw.interfaces")
@@ -10,6 +28,7 @@ local ui = require('openmw.ui')
 local aux_util = require('openmw_aux.util')
 
 local gutils = require(mp .. 'scripts/gutils')
+local itemutil = require(mp .. "scripts/item_utils")
 local DetectionMarker = require(mp .. "Sneak_ui_elements")
 local selfActor = gutils.Actor:new(self)
 
@@ -25,6 +44,7 @@ nearDetectionRange = detectionRange*0.66
 
 local sneakCheckPeriod = 0.33 -- seconds between sneak checks per actor
 local followTargetsCheckPeriod = 2.0 -- seconds between follow target updates per actor
+local losCheckPeriod = 0.2
 local isSneaking = false
 local isMoving = false
 local isInvisible = false
@@ -60,7 +80,7 @@ local function elusiveness(distance)
     
     local standStillTerm = 1.25 -- not in vanilla, newly added
     if isMoving then
-        standStillTerm = 1.0
+        standStillTerm = 0.9
     end     
 
     local elusivenessScore = (sneakTerm + agilityTerm + luckTerm) * distTerm * fatigueTerm * standStillTerm + chameleonTerm + invisTerm
@@ -80,19 +100,15 @@ local function directionMult(actor)
     local facing = facingFactor(actor)
     facing = util.clamp(facing, -1, 0)
 
-    local mult = util.remap(facing, -1, 0, 0.5, 0.75)
+    local mult = util.remap(facing, -1, 0.25, 0.5, 1)
     -- This is modified from vanilla, in vanilla its hardcoded to be 1.5 past 90 deg and 0.5 behind
-    -- 0.75 on a side
+    -- 1 on a side (actually slighly closer to front than pure 90deg, maybe 100-110deg or so)
     -- 0.5 behind
     -- gutils.print("direction mult: " .. mult .. " (facing factor: " .. facing .. ")")
     return mult
 end
 
 local function LOS(player, actor)
-    if facingFactor(actor) < 0.25 then
-        return false -- early escape from LOS checks for facing-away actors
-    end
-
     -- cast once from center of box to center of box
     local playerCenter = player:getBoundingBox().center
     local actorCenter = actor:getBoundingBox().center
@@ -128,7 +144,8 @@ local function LOS(player, actor)
 end
 
 local function awareness(ast)
-    -- https://en.uesp.net/wiki/Morrowind:Sneak
+    -- https://en.uesp.net/wiki/Morrowind:Sneak    
+
     local sneakTerm = ast.gactor:getSneakValue()
     local agilityTerm = ast.gactor:getAttributeStat("agility").modified / 5
     local luckTerm = ast.gactor:getAttributeStat("luck").modified / 10
@@ -142,19 +159,20 @@ local function awareness(ast)
         blind = blindEffect.magnitude
     end
 
-    local hasLOS = LOS(self, ast.actor)
-    local losTerm = 0
-    if hasLOS then
-        losTerm = 100
+    local isFacing = facingFactor(ast.actor) > 0.25
+    local facingTerm = 0
+    if isFacing then
+        facingTerm = 100
     end
     if chameleon > 0 then
-        losTerm = losTerm * (1 - chameleon / 100)
+        facingTerm = facingTerm * (1 - chameleon / 100)
     end
     if isInvisible then
-        losTerm = 0
+        facingTerm = 0
     end
 
-    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + losTerm
+    print(directionMult(ast.actor))
+    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + facingTerm
     -- gutils.print("awareness: " .. awarenessScore .. " = " .. "(" .. sneakTerm .. "+" .. agilityTerm .. "+" ..
     --                      luckTerm .. "-" .. blind .. ") * " .. fatigueTerm .. " * " .. directionMult)  
     
@@ -162,13 +180,113 @@ local function awareness(ast)
 end
 
 
+--------------------------------------------------
+-- Calm effect check (NPC vs creature aware)
+--------------------------------------------------
+
+local function hasCalm(actor)
+    local effects = types.Actor.activeEffects(actor)
+
+    if types.NPC.objectIsInstance(actor) then
+        local calm = effects:getEffect(core.magic.EFFECT_TYPE.CalmHumanoid)
+        return calm and calm.magnitude > 0
+    else
+        local calm = effects:getEffect(core.magic.EFFECT_TYPE.CalmCreature)
+        return calm and calm.magnitude > 0
+    end
+end
+
+--------------------------------------------------
+-- Distance bias (matches engine math)
+--------------------------------------------------
+local iFightDistanceBase = core.getGMST('iFightDistanceBase')
+local fFightDistanceMultiplier = core.getGMST('fFightDistanceMultiplier')
+local fFightDispMult = core.getGMST('fFightDispMult')
+local function getFightDistanceBias(actor, target)
+    local dist = (actor.position - target.position):length()    
+
+    return iFightDistanceBase - fFightDistanceMultiplier * dist
+end
+
+--------------------------------------------------
+-- Disposition bias (creatures fixed at 50)
+--------------------------------------------------
+
+local function getFightDispositionBias(disposition)
+    local mult = fFightDispMult
+    return (50 - disposition) * mult
+end
+
+--------------------------------------------------
+-- Aggression decision
+--------------------------------------------------
+
+local function isAggressive(ast, target)
+    -- TO DO: Doesnt really make sense as some monsters are not agressive
+    --------------------------------------------------
+    -- NPC override rule
+    --------------------------------------------------
+
+    if types.NPC.objectIsInstance(ast.actor) then
+        return not hasCalm(ast.actor)
+    end
+
+    --------------------------------------------------
+    -- Creature logic
+    --------------------------------------------------
+
+    -- calm suppresses aggression
+    if hasCalm(ast.actor) then
+        return false
+    end
+
+    local aiFight = ast.gactor:aiFightStat().modified
+
+    -- fight score calculation
+    local fight =
+        aiFight  -- Access the modified value of the AI stat
+        + getFightDistanceBias(ast.actor, target)
+        + getFightDispositionBias(50)
+
+    local res = fight >= 100
+
+    --[[ if not res then
+        print("Actor", ast.actor.recordId, "is not agressive towards target", target.recordId, "Fight:", aiFight, "Distance Bias:", getFightDistanceBias(ast.actor, target), "Disposition Bias:", getFightDispositionBias(50), "Total: ", fight)
+    end ]]
+    
+    return fight >= 100
+end
+
+local function aggroDistance(ast)
+    local aiFight = ast.gactor:aiFightStat().modified
+    return (iFightDistanceBase + aiFight - 100) / fFightDistanceMultiplier
+end
+
+    
+
+
+
+
+
+
+
+
+
+
+
 -- sneakCheck should return true if the actor can't see the player.
 local function sneakCheck(ast)
     -- if we aren't sneaking, then you don't pass the check.
     if isSneaking ~= true then
-        return false, 0
+        return false, nil
     end
 
+    if LOS(self.object, ast.actor) == false then
+        ast.inLOS = false
+        return true, nil
+    end
+
+    ast.inLOS = true
     local elusivenessScore = elusiveness(ast.distance)
     local awarenessScore = awareness(ast)
     local sneakChance = math.min(100, math.max(0, elusivenessScore - awarenessScore))    
@@ -223,6 +341,7 @@ local function getAst(actor)
         ast = {
             actor = actor,
             gactor = gutils.Actor:new(actor),
+            cell = actor.cell,
             distance = 250,
             progress = 0.0
         }
@@ -232,9 +351,14 @@ local function getAst(actor)
     return ast
 end
 
+local function getAstIfExists(actor)
+    if not persistantActorStatuses[actor.id] then return nil end
+    return getAst(actor)
+end
+
 local function isFriend(ast)    
-    if not ast.followTargets or not ast.combatTargets then return false end
-    if gutils.arrayContains(ast.followTargets,self) and not gutils.arrayContains(ast.combatTargets,self) then
+    if not ast.followTargets then return false end
+    if gutils.arrayContains(ast.followTargets, self.object) and (not ast.combatTargets or not gutils.arrayContains(ast.combatTargets, self.object)) then
         return true
     end
     return false
@@ -246,43 +370,62 @@ local function detectionCheck(dt)
     if isSneaking then
         for _, actor in ipairs(nearby.actors) do 
 
-            if actor == self.object then goto continue end            
+            if actor == self.object then goto continue end   
+            
+            local ast = nil   
+            local isDead = types.Actor.isDead(actor)
+            
+            if isDead then
+                ast = getAstIfExists(actor)
+                if ast then
+                    ast.noticing = false
+                    ast.progress = 0
+                end
+                goto continue
+            end
             
             ast = getAst(actor)
-            ast.isDead = ast.gactor:isDead()
-            
-            if ast.isDead then goto continue end
-
+            ast.isDead = isDead
             
             local distance = (self.position - actor.position):length()                
             local noticing = false
             local sneakChance = 100
+            local isAggro = false
+
+            -- print(ast.actor.recordId, " Aggro range is ", aggroDistance(ast), " while currect detection range is ", detectionRange)
             
             -- Detection check! ------------
             --------------------------------
-            if distance <= detectionRange and not ast.isFriend then                    
-                if ast.checker == nil then
-                    -- TO DO: This will not work, they will all do it at the same time, since after first execution theyll align
-                    ast.checker = gutils.cachedFunction(sneakCheck, sneakCheckPeriod, -math.random() * sneakCheckPeriod - sneakCheckPeriod)
+            if distance <= detectionRange and not ast.isFriend then                
+                if ast.checker == nil then                        
+                    ast.checker = gutils.cachedFunction(sneakCheck, sneakCheckPeriod, math.random() * sneakCheckPeriod)
                 end
                 if ast.followTargetsChecker == nil then
                     ast.followTargetsChecker = gutils.cachedFunction(getFollowTargets, followTargetsCheckPeriod, math.random() * followTargetsCheckPeriod)
                 end
+
+                local newSneakChance = nil
+                isNotDetected, newSneakChance = ast.checker(ast)
                 
-                isNotDetected, sneakChance = ast.checker(ast)
-                noticing = not isNotDetected          
+                noticing = not isNotDetected
+                if newSneakChance ~= nil then sneakChance = newSneakChance end
+
+                ast.followTargetsChecker(actor)    
                 
-                ast.followTargetsChecker(actor)
-            end 
+                -- Check if agressive
+                isAggro = isAggressive(ast, self.object)
+                -- print(actor.recordId .. " is " .. (isAggro and "aggressive" or "not aggressive") .. " towards player")
+            end
             
             ast.noticing = noticing
-            ast.sneakChance = sneakChance                
+            ast.sneakChance = sneakChance
             ast.distance = distance
+            ast.isAggressive = isAggro
 
-            if ast.noticing then
+            -- Add to observerActorStatuses if noticing OR if there's existing progress that needs to be tracked
+            if ast.noticing or ast.progress > 0 then
                 observerActorStatuses[actor.id] = ast
-            end
-               
+            end               
             
             ::continue::
         end
@@ -294,6 +437,8 @@ local function detectionCheck(dt)
         -- Manage detection progress ----
         ---------------------------------
         detectionVel, cooldownVel = getDetectionVelocities(ast.sneakChance)
+
+        -- print(ast.actor.recordId, "is observed. Object is valid:", ast.actor:isValid(), " Actor is dead:", ast.isDead, types.Actor.isDead(ast.actor), " object cell ", ast.actor.cell.id, " object pos ", ast.actor.position)
 
         if ast.progress == nil then ast.progress = 0.0 end
         if not ast.isDead then
@@ -309,19 +454,20 @@ local function detectionCheck(dt)
         end
 
         -- Send spotted event and break sneak only when detection progress reaches 1.0
-        if ast.progress >= 1.0 then            
+        if ast.progress >= 1.0 and ast.isAggressive then            
             self.controls.sneak = false  -- Break sneak when fully detected                    
         end
 
         -- Manage ui markers ------------------
         ---------------------------------------
-        local shouldShowMarker = isSneaking and not ast.isDead and (ast.distance <= detectionRange or ast.progress > 0)
+        -- Show markers only when sneaking and detection progress is happening
+        local shouldShowMarker = isSneaking and not ast.isDead and ast.inLOS
         if shouldShowMarker then
             -- If marker doesnt exist but should - make it
             if not ast.marker then ast.marker = DetectionMarker:new() end
-        elseif ast.marker then    
+        elseif ast.marker then
             -- If it shouldnt exist but does - remove it
-            local isSuccesful = ast.progress >= 1.0            
+            local isSuccesful = ast.progress >= 1.0
             ast.marker:disappear(isSuccesful)
         end
 
@@ -333,6 +479,7 @@ local function detectionCheck(dt)
             -- Update the marker's progress and position
             ast.marker:setProgress(ast.progress)
             ast.marker:setWorldPos(posAboveActor(ast.actor))
+            ast.marker:setAggressive(ast.isAggressive)
         end
 
         -- Final cleanup, if no marker and no progress - remove the status object --
@@ -346,21 +493,37 @@ end
 ---------------------------------------------------------
 ---------------------------------------------------------
 
+local modifiedSkill = nil
+local skillMod = 0
+local lastCell = nil
 
 local function onUpdate(dt)
     if dt == 0 then
         return
     end   
 
+    -- Fetching locomotion statuses
     isMoving = selfActor:getCurrentSpeed() > 0 or not selfActor:isOnGround()
     isSneaking = self.controls.sneak
 
-    local invisibilityEffect = selfActor:activeEffects():getEffect(core.magic.EFFECT_TYPE.Invisibility)
+    -- Fetching invisibility status
+    local activeEffects = selfActor:activeEffects()
+    local invisibilityEffect = activeEffects:getEffect(core.magic.EFFECT_TYPE.Invisibility)
     isInvisible = (invisibilityEffect ~= nil) and (invisibilityEffect.magnitude > 0)
 
-    local chameleonEffect = selfActor:activeEffects():getEffect(core.magic.EFFECT_TYPE.Chameleon)    
+    -- Fetching chameleon effeect
+    local chameleonEffect = activeEffects:getEffect(core.magic.EFFECT_TYPE.Chameleon)    
     if chameleonEffect ~= nil then
         chameleon = chameleonEffect.magnitude
+    end
+
+    -- Fetching cell changes and removing actors from other cells
+    local cell = self.cell
+    if not lastCell or (lastCell ~= cell and not (lastCell.isExterior and cell.isExterior)) then
+        lastCell = cell
+        for id, ast in pairs(persistantActorStatuses) do
+            if ast.cell ~= cell then persistantActorStatuses[id] = nil end
+        end
     end
     
     detectionCheck(dt)
@@ -370,22 +533,37 @@ local function onUpdate(dt)
         if ast.marker then ast.marker:updateTweeners(dt) end
     end
 
+    -- Increase the weapon skill while sneaking
+    local weaponObj = selfActor:getEquipment(types.Actor.EQUIPMENT_SLOT.CarriedRight)
+    local skill = "handtohand"
+    if weaponObj then   
+        skill = itemutil.getSkillTypeForEquipment(weaponObj).id        
+    end           
+    stat = selfActor:getSkillStat(skill)    
+    
+    if isSneaking then
+        if modifiedSkill ~= skill then
+            -- if we switched to a different skill, remove old modifier
+            if modifiedSkill then
+                local oldStat = selfActor:getSkillStat(modifiedSkill)
+                oldStat.modifier = oldStat.modifier - skillMod
+            end
+
+            skillMod = stat.base / 2            
+            modifiedSkill = skill
+            stat.modifier = stat.modifier + skillMod
+        end        
+    else
+        if modifiedSkill then
+            -- remove modifier when not sneaking
+            stat.modifier = stat.modifier - skillMod
+            modifiedSkill = nil
+            skillMod = 0
+        end
+    end
+    
     
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 local function onCombatTargetsChanged(e)
@@ -398,7 +576,7 @@ local function onCombatTargetsChanged(e)
     ast.isFriend = isFriend(ast)
     ast.isDead = types.Actor.isDead(e.actor) 
 
-    if not ast.isDead then
+    if not ast.isDead and gutils.arrayContains(ast.combatTargets, self.object) then
         ast.noticing = true
         ast.progress = 1.0
         observerActorStatuses[e.actor.id] = ast
@@ -406,12 +584,16 @@ local function onCombatTargetsChanged(e)
 end
 
 local function onGetFollowTargets(e)
-    -- gutils.print("Player: Received follow targets resp from " .. e.actor.recordId)
+    gutils.print("Player: Received follow targets resp from " .. e.actor.recordId, 1)
+    for _, actor in ipairs(e.targets) do
+        gutils.print("Target:",actor.recordId)
+    end
     if e.actor == self.object then return end
 
-    local ast = getAst(e.actor)    
+    local ast = getAst(e.actor)
     ast.followTargets = e.targets
     ast.isFriend = isFriend(ast)
+    -- gutils.print(e.actor.recordId, "Is a friend",ast.isFriend, 1)
 end
 
 local function onReportAttack(e)
@@ -429,9 +611,25 @@ local function onReportAttack(e)
     end
 end
 
+local function onSave()
+    return {
+        modifiedSkill = modifiedSkill,
+        skillMod = skillMod
+    }
+end
+
+local function onLoad(data)
+    if data.modifiedSkill then
+        modifiedSkill = data.modifiedSkill
+        skillMod = data.skillMod
+    end
+end
+
 return {    
     engineHandlers = {
-        onUpdate = onUpdate
+        onUpdate = onUpdate,
+        onSave = onSave,
+        onLoad = onLoad
     },
     eventHandlers = { 
         OMWMusicCombatTargetsChanged = onCombatTargetsChanged,

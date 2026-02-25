@@ -15,6 +15,8 @@ DetectionMarker.__index = DetectionMarker
 local markerSizeScale = 1.0
 local markerBgColor = util.color.hex("0f0f1f")
 local markerFillColor = util.color.hex("efc36b")
+local markerFillDangerColor = util.color.hex("c01c28") -- Saturated red for danger
+local markerGrayColor = util.color.hex("808080") -- Gray for non-aggressive
 
 local markerSize= util.vector2(50, 50) * markerSizeScale -- Size of the detection marker UI element
 local disapearAnimSize = markerSize * 1.5 -- Size to scale to when disappearing
@@ -25,6 +27,9 @@ function DetectionMarker:new()
 
     -- Initialize tweeners dictionary
     instance.tweeners = {}
+
+    -- Initialize aggressive state
+    instance.isAggressive = false
 
     -- Create the UI element with a cropping wrapper and fill image
     instance.element = ui.create({
@@ -96,14 +101,37 @@ function DetectionMarker:setProgress(progress)
     -- Clamp progress between 0 and 1
     progress = util.clamp(progress, 0, 1) math.max(0, math.min(1, progress))
     local fillProgress = util.remap(progress, 0, 1, 0.2, 0.8)
-    -- local color = gutils.lerpColor(markerBgColor, markerFillColor, progress)
     local fillAlpha = gutils.lerp(0.33, 0.8, progress)
     local glowAlpha = gutils.lerp(0.1, 1, progress)
+
+    -- Determine colors based on aggressive state and progress
+    local fillColor, glowColor
+    if not self.isAggressive then
+        -- Non-aggressive: always gray
+        fillColor = markerGrayColor
+        glowColor = markerGrayColor
+    else
+        -- Aggressive: lerp from yellow to red starting at 66% progress
+        if progress < 0.66 then
+            -- Below 66%: use original yellow color
+            fillColor = markerFillColor
+            glowColor = markerFillColor
+        else
+            -- At or above 66%: lerp from yellow to red
+            local lerpT = util.remap(progress, 0.66, 1.0, 0, 1)
+            lerpT = util.clamp(lerpT, 0, 1)
+            local color = gutils.lerpColor(markerFillColor, markerFillDangerColor, lerpT)
+            fillColor = color
+            glowColor = color
+        end
+    end
 
     -- Update the relative height of the wrapper to reveal more of the image
     self.element.layout.content["detectionFillWrapper"].props.relativeSize = util.vector2(1, fillProgress)
     self.element.layout.content["detectionFillWrapper"].content["detectionFill"].props.alpha = fillAlpha
+    self.element.layout.content["detectionFillWrapper"].content["detectionFill"].props.color = fillColor
     self.element.layout.content["detectionMarkerGlow"].props.alpha = glowAlpha
+    self.element.layout.content["detectionMarkerGlow"].props.color = glowColor
 
     self.element:update()
 end
@@ -171,6 +199,10 @@ function DetectionMarker:setWorldPos(worldPos)
     self.element:update()
 end
 
+function DetectionMarker:setAggressive(aggressive)
+    self.isAggressive = aggressive or false
+    self.element:update()
+end
 
 
 

@@ -1,0 +1,2 @@
+CUSTOM, CLOTHING, ARMOR, BOOK, INGREDIENT, MISC_ITEM, POTION, WEAPON, APPARATUS, LOCKPICK, PROBE, REPAIR: scripts\MaxYari\experiments\MightyThrowObject.lua
+NPC, CREATURE, PLAYER: scripts\MaxYari\experiments\MightyThrowActor.lua

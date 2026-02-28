@@ -146,18 +146,18 @@ local function awareness(ast)
     end
 
     local isFacing = facingFactor(ast.actor) > 0.25
-    local facingTerm = 0
+    local facingMult = 0
     if isFacing then
-        facingTerm = 100
+        facingMult = 0.5
     end
     if chameleon > 0 then
-        facingTerm = facingTerm * (1 - chameleon / 100)
+        facingMult = facingMult * (1 - chameleon / 100)
     end
     if isInvisible then
-        facingTerm = 0
+        facingMult = 0
     end
     
-    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + facingTerm
+    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + (1 + facingMult)
     -- gutils.print("awareness: " .. awarenessScore .. " = " .. "(" .. sneakTerm .. "+" .. agilityTerm .. "+" ..
     --                      luckTerm .. "-" .. blind .. ") * " .. fatigueTerm .. " * " .. directionMult)  
     
@@ -427,6 +427,9 @@ local function detectionCheck(dt)
         if ast.isDead or not ast.actor:isValid() then
             ast.progress = 0.0
             ast.successRolls = 0
+        elseif ast.fightingPlayer then
+            ast.noticing = true
+            ast.progress = 1.0
         elseif not ast.inLOS then
             -- Out of LOS: immediate fixed decrease, set successRolls to 5
             ast.progress = math.max(0.0, ast.progress - dt * DECREASE_RATE)
@@ -565,7 +568,7 @@ end
 
 
 local function onCombatTargetsChanged(e)
-    -- gutils.print("Player: Combat targets changed for " .. e.actor.recordId)
+    
     if e.actor == self.object then return end
     -- print("Combat targets changed for " .. e.actor.recordId)
 
@@ -575,10 +578,12 @@ local function onCombatTargetsChanged(e)
     ast.isDead = types.Actor.isDead(e.actor) 
 
     if not ast.isDead and gutils.arrayContains(ast.combatTargets, self.object) then
-        ast.noticing = true
-        ast.progress = 1.0
-        ast.successRolls = 0
+        gutils.print("Player: Combat targets changed for " .. e.actor.recordId, "Player is a target", 1)
+        ast.fightingPlayer = true       
+        ast.isAggressive = true 
         observerActorStatuses[e.actor.id] = ast
+    else
+        ast.fightingPlayer = false
     end
 end
 
@@ -603,10 +608,9 @@ local function onReportAttack(e)
     ast.isFriend = isFriend(ast)
     ast.isDead = types.Actor.isDead(e.target) 
 
-    if not ast.isDead then
-        ast.noticing = true
-        ast.progress = 1.0
-        ast.successRolls = 0
+    if e.attacker == self.object and not ast.isDead then
+        ast.fightingPlayer = true
+        ast.isAggressive = true        
         observerActorStatuses[e.target.id] = ast
     end
 end

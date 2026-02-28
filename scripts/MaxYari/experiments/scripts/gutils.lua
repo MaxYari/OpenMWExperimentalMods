@@ -293,7 +293,7 @@ local function cachedFunction(fn, delay, startDelay)
         if not isFirstRun then
             lastExecution = currentTime
         else
-            ifFirstRun = false
+            isFirstRun = false
         end
 
         return c1, c2, "new"

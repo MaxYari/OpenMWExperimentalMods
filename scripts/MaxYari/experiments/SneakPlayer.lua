@@ -80,7 +80,7 @@ local function elusiveness(distance)
     
     local standStillTerm = 1.25 -- not in vanilla, newly added
     if isMoving then
-        standStillTerm = 0.9
+        standStillTerm = 1
     end     
 
     local elusivenessScore = (sneakTerm + agilityTerm + luckTerm) * distTerm * fatigueTerm * standStillTerm + chameleonTerm + invisTerm
@@ -100,9 +100,9 @@ local function directionMult(actor)
     local facing = facingFactor(actor)
     facing = util.clamp(facing, -1, 0)
 
-    local mult = util.remap(facing, -1, 0.25, 0.5, 1)
+    local mult = util.remap(facing, -1, 0.25, 0.5, 0.75)
     -- This is modified from vanilla, in vanilla its hardcoded to be 1.5 past 90 deg and 0.5 behind
-    -- 1 on a side (actually slighly closer to front than pure 90deg, maybe 100-110deg or so)
+    -- 0.75 on a side (actually slighly closer to front than pure 90deg, maybe 100-110deg or so)
     -- 0.5 behind
     -- gutils.print("direction mult: " .. mult .. " (facing factor: " .. facing .. ")")
     return mult
@@ -110,30 +110,16 @@ end
 
 local function LOS(player, actor)
     -- cast once from center of box to center of box
-    local playerCenter = player:getBoundingBox().center
-    local actorCenter = actor:getBoundingBox().center
+    local playerBounds = types.Actor.getPathfindingAgentBounds(player) -- Use pathfinding bounds as they should match collider size. If mesh bounding box is used instead - center is sometimes outside the collider.
+    local playerHeight = playerBounds.halfExtents.z * 2    
+    local playerEyes = player.position + util.vector3(0,0,playerHeight * 0.75)
+    local actorEyes = actor:getBoundingBox().center -- Some actors (like creatures) have wonky pathfinding bounds, so better use mesh bounding box here
 
-    local castResult = nearby.castRay(actorCenter, playerCenter, {
+    local castResult = nearby.castRay(actorEyes, playerEyes, {
         collisionType = nearby.COLLISION_TYPE.AnyPhysical,
         ignore = actor
     })
     --gutils.print("raycast(center, "..tostring(actorCenter)..") from " .. actor.recordId .. " hit" ..
-    --                        aux_util.deepToString(castResult.hitObject, 4))
-
-    if (castResult.hitObject ~= nil) and (castResult.hitObject.id == player.id) then
-        return true
-    end
-
-    -- and one more check from top of one box to near-center of other.
-    -- this exists so merchants can spot you behind counters.
-    local actorHead = actor:getBoundingBox().center + util.vector3(0, 0, actor:getBoundingBox().halfSize.z)
-    local playerChest = player:getBoundingBox().center + util.vector3(0, 0, (player:getBoundingBox().halfSize.z) / 2)
-
-    castResult = nearby.castRay(actorHead, playerChest, {
-        collisionType = nearby.COLLISION_TYPE.AnyPhysical,
-        ignore = actor
-    })
-    --gutils.print("raycast(head, "..tostring(actorHead)..") from " .. actor.recordId .. " hit" ..
     --                        aux_util.deepToString(castResult.hitObject, 4))
 
     if (castResult.hitObject ~= nil) and (castResult.hitObject.id == player.id) then
@@ -170,8 +156,7 @@ local function awareness(ast)
     if isInvisible then
         facingTerm = 0
     end
-
-    print(directionMult(ast.actor))
+    
     local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + facingTerm
     -- gutils.print("awareness: " .. awarenessScore .. " = " .. "(" .. sneakTerm .. "+" .. agilityTerm .. "+" ..
     --                      luckTerm .. "-" .. blind .. ") * " .. fatigueTerm .. " * " .. directionMult)  
@@ -277,16 +262,11 @@ end
 -- sneakCheck should return true if the actor can't see the player.
 local function sneakCheck(ast)
     -- if we aren't sneaking, then you don't pass the check.
-    if isSneaking ~= true then
-        return false, nil
-    end
+    if isSneaking ~= true then return false, nil end    
 
-    if LOS(self.object, ast.actor) == false then
-        ast.inLOS = false
-        return true, nil
-    end
+    ast.inLOS = LOS(self.object, ast.actor)
+    if ast.inLOS == false then return true,nil end 
 
-    ast.inLOS = true
     local elusivenessScore = elusiveness(ast.distance)
     local awarenessScore = awareness(ast)
     local sneakChance = math.min(100, math.max(0, elusivenessScore - awarenessScore))    
@@ -295,24 +275,24 @@ local function sneakCheck(ast)
     
 
     -- gutils.print("sneak chance: " .. sneakChance .. ", roll: " .. roll)
-
     return success, sneakChance
 end
 
-local function getDetectionVelocities(sneakChance)
+local DECREASE_RATE = 0.25  -- fixed decrease rate per second
+
+local function getDetectionVelocity(sneakChance)
     -- returns a velocity multiplier based on sneak chance
     -- sneakChance is 0-100
     -- at 0 sneakChance, velocity is 2.0 (detected quickly)
-    -- at 100 sneakChance, velocity is 0.1 (detection slows to a crawl) 
-    local maxDetectDur = 20.0  
-    local minDetectDur = 0.5    
+    -- at 100 sneakChance, velocity is 0.05 (detection slows to a crawl)
+    local maxDetectDur = 8
+    local minDetectDur = 0.5
     if not sneakChance then
         sneakChance = 0
     end
 
-    local gainDur = util.remap(sneakChance, 0, 100, minDetectDur, maxDetectDur)
-    local lossDur = util.remap(sneakChance, 0, 100, maxDetectDur, minDetectDur)
-    return 1/gainDur, 1/lossDur
+    local detectDur = util.remap(sneakChance, 0, 100, minDetectDur, maxDetectDur)
+    return 1 / detectDur
 end
 
 local function isTalking(actor)
@@ -334,18 +314,19 @@ end
 local observerActorStatuses = {}
 local persistantActorStatuses = {}
 
-local function getAst(actor)    
+local function getAst(actor)
     local ast = persistantActorStatuses[actor.id]
-    if not ast then   
-        -- gutils.print("Creating new persistant actor status for " .. actor.recordId)     
+    if not ast then
+        -- gutils.print("Creating new persistant actor status for " .. actor.recordId)
         ast = {
             actor = actor,
             gactor = gutils.Actor:new(actor),
             cell = actor.cell,
             distance = 250,
-            progress = 0.0
+            progress = 0.0,
+            successRolls = 0
         }
-        
+
         persistantActorStatuses[actor.id] = ast
     end
     return ast
@@ -380,6 +361,8 @@ local function detectionCheck(dt)
                 if ast then
                     ast.noticing = false
                     ast.progress = 0
+                    ast.successRolls = 0
+                    ast.isDead = isDead
                 end
                 goto continue
             end
@@ -400,7 +383,7 @@ local function detectionCheck(dt)
                 if ast.checker == nil then                        
                     ast.checker = gutils.cachedFunction(sneakCheck, sneakCheckPeriod, math.random() * sneakCheckPeriod)
                 end
-                if ast.followTargetsChecker == nil then
+                if ast.followTargetsChecker == nil then                    
                     ast.followTargetsChecker = gutils.cachedFunction(getFollowTargets, followTargetsCheckPeriod, math.random() * followTargetsCheckPeriod)
                 end
 
@@ -436,21 +419,30 @@ local function detectionCheck(dt)
     for actorId, ast in pairs(observerActorStatuses) do
         -- Manage detection progress ----
         ---------------------------------
-        detectionVel, cooldownVel = getDetectionVelocities(ast.sneakChance)
-
-        -- print(ast.actor.recordId, "is observed. Object is valid:", ast.actor:isValid(), " Actor is dead:", ast.isDead, types.Actor.isDead(ast.actor), " object cell ", ast.actor.cell.id, " object pos ", ast.actor.position)
+        local detectionVel = getDetectionVelocity(ast.sneakChance)
 
         if ast.progress == nil then ast.progress = 0.0 end
-        if not ast.isDead then
-            if ast.noticing then
-                ast.progress = math.min(1.0, ast.progress + dt * detectionVel) -- Increase at 0.25 per second            
-            else
-                -- Decrease detection progress when not detected
-                ast.progress = math.max(0.0, ast.progress - dt * cooldownVel) -- Decrease at 0.25 per second
-            end
-        else
-            -- If dead, instantly drop progress to 0
+        if ast.successRolls == nil then ast.successRolls = 0 end
+        
+        if ast.isDead or not ast.actor:isValid() then
             ast.progress = 0.0
+            ast.successRolls = 0
+        elseif not ast.inLOS then
+            -- Out of LOS: immediate fixed decrease, set successRolls to 5
+            ast.progress = math.max(0.0, ast.progress - dt * DECREASE_RATE)
+            ast.successRolls = 3
+        elseif ast.noticing then
+            -- Detected: increase with sneak-based velocity, reset counter
+            ast.progress = math.min(1.0, ast.progress + dt * detectionVel)
+            ast.successRolls = 0
+        else
+            -- Not detected: count success rolls
+            ast.successRolls = ast.successRolls + 1
+            if ast.successRolls >= 3 then
+                -- After 3 successes, start decreasing at fixed rate
+                ast.progress = math.max(0.0, ast.progress - dt * DECREASE_RATE)
+            end
+            -- else: progress stays same
         end
 
         -- Send spotted event and break sneak only when detection progress reaches 1.0
@@ -461,7 +453,7 @@ local function detectionCheck(dt)
         -- Manage ui markers ------------------
         ---------------------------------------
         -- Show markers only when sneaking and detection progress is happening
-        local shouldShowMarker = isSneaking and not ast.isDead and ast.inLOS
+        local shouldShowMarker = isSneaking and not ast.isDead and ast.inLOS        
         if shouldShowMarker then
             -- If marker doesnt exist but should - make it
             if not ast.marker then ast.marker = DetectionMarker:new() end
@@ -522,7 +514,13 @@ local function onUpdate(dt)
     if not lastCell or (lastCell ~= cell and not (lastCell.isExterior and cell.isExterior)) then
         lastCell = cell
         for id, ast in pairs(persistantActorStatuses) do
-            if ast.cell ~= cell then persistantActorStatuses[id] = nil end
+            if ast.cell ~= cell then 
+                if ast.marker then
+                    ast.marker:disappear()
+                end                
+                persistantActorStatuses[id] = nil
+                observerActorStatuses[id] = nil
+            end
         end
     end
     
@@ -579,12 +577,13 @@ local function onCombatTargetsChanged(e)
     if not ast.isDead and gutils.arrayContains(ast.combatTargets, self.object) then
         ast.noticing = true
         ast.progress = 1.0
+        ast.successRolls = 0
         observerActorStatuses[e.actor.id] = ast
     end
 end
 
 local function onGetFollowTargets(e)
-    gutils.print("Player: Received follow targets resp from " .. e.actor.recordId, 1)
+    -- gutils.print("Player: Received follow targets resp from " .. e.actor.recordId, 1)
     for _, actor in ipairs(e.targets) do
         gutils.print("Target:",actor.recordId)
     end
@@ -607,6 +606,7 @@ local function onReportAttack(e)
     if not ast.isDead then
         ast.noticing = true
         ast.progress = 1.0
+        ast.successRolls = 0
         observerActorStatuses[e.target.id] = ast
     end
 end

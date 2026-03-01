@@ -27,6 +27,7 @@ local util = require("openmw.util")
 local ui = require('openmw.ui')
 local aux_util = require('openmw_aux.util')
 
+local DEFS = require(mp .. 'scripts/sneak_defs')
 local gutils = require(mp .. 'scripts/gutils')
 local itemutil = require(mp .. "scripts/item_utils")
 local DetectionMarker = require(mp .. "Sneak_ui_elements")
@@ -129,6 +130,8 @@ local function LOS(player, actor)
     return false
 end
 
+local closeRangeDistMax = DEFS.MtoGU * 6.0
+local closeRangeDistMin = DEFS.MtoGU * 1.0
 local function awareness(ast)
     -- https://en.uesp.net/wiki/Morrowind:Sneak    
 
@@ -156,8 +159,15 @@ local function awareness(ast)
     if isInvisible then
         facingMult = 0
     end
+
+    local closeFacingTerm = 0
+    if isFacing and ast.distance <= closeRangeDistMax then
+        closeFacingTerm = util.remap(ast.distance, closeRangeDistMin, closeRangeDistMax, 100, 25)
+        if closeFacingTerm < 0 then closeFacingTerm = 0 end
+    end
+    print(ast.actor.recordId, " dist: ", ast.distance * DEFS.GUtoM, " close facing term ", closeFacingTerm)
     
-    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) + (1 + facingMult)
+    local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) * (1 + facingMult) + closeFacingTerm
     -- gutils.print("awareness: " .. awarenessScore .. " = " .. "(" .. sneakTerm .. "+" .. agilityTerm .. "+" ..
     --                      luckTerm .. "-" .. blind .. ") * " .. fatigueTerm .. " * " .. directionMult)  
     
@@ -168,7 +178,6 @@ end
 --------------------------------------------------
 -- Calm effect check (NPC vs creature aware)
 --------------------------------------------------
-
 local function hasCalm(actor)
     local effects = types.Actor.activeEffects(actor)
 
@@ -295,10 +304,6 @@ local function getDetectionVelocity(sneakChance)
     return 1 / detectDur
 end
 
-local function isTalking(actor)
-    return core.sound.isSayActive(actor)
-end
-
 local function posAboveActor(actor)
     local bbox = actor:getBoundingBox()
     return bbox.center + util.vector3(0, 0, bbox.halfSize.z)
@@ -314,6 +319,7 @@ end
 local observerActorStatuses = {}
 local persistantActorStatuses = {}
 
+-- "ast" stands for "Actor's Status"
 local function getAst(actor)
     local ast = persistantActorStatuses[actor.id]
     if not ast then
@@ -370,7 +376,8 @@ local function detectionCheck(dt)
             ast = getAst(actor)
             ast.isDead = isDead
             
-            local distance = (self.position - actor.position):length()                
+            local distance = (self.position - actor.position):length()
+            ast.distance = distance
             local noticing = false
             local sneakChance = 100
             local isAggro = false
@@ -402,7 +409,6 @@ local function detectionCheck(dt)
             
             ast.noticing = noticing
             ast.sneakChance = sneakChance
-            ast.distance = distance
             ast.isAggressive = isAggro
 
             -- Add to observerActorStatuses if noticing OR if there's existing progress that needs to be tracked
@@ -638,6 +644,6 @@ return {
     eventHandlers = { 
         OMWMusicCombatTargetsChanged = onCombatTargetsChanged,
         MaxYariUtil_FollowTargets = onGetFollowTargets,
-        SneakExclamation_ReportAttack = onReportAttack
+        [DEFS.e.ReportAttack] = onReportAttack
     }
 }

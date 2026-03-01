@@ -165,7 +165,13 @@ local function awareness(ast)
         closeFacingTerm = util.remap(ast.distance, closeRangeDistMin, closeRangeDistMax, 100, 25)
         if closeFacingTerm < 0 then closeFacingTerm = 0 end
     end
-    print(ast.actor.recordId, " dist: ", ast.distance * DEFS.GUtoM, " close facing term ", closeFacingTerm)
+    if chameleon > 0 then
+        closeFacingTerm = closeFacingTerm * (1 - chameleon / 100)
+    end
+    if isInvisible then
+        closeFacingTerm = 0
+    end
+    
     
     local awarenessScore = (sneakTerm + agilityTerm + luckTerm - blind) * fatigueTerm * directionMult(ast.actor) * (1 + facingMult) + closeFacingTerm
     -- gutils.print("awareness: " .. awarenessScore .. " = " .. "(" .. sneakTerm .. "+" .. agilityTerm .. "+" ..
